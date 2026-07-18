@@ -1,0 +1,74 @@
+<?php
+/**
+ * Plugin Name: CCDC authLdap Config
+ * Description: Pre-seeds the authLdap plugin with Active Directory (prccdc.local)
+ *              settings and force-activates it, so AD users can log into
+ *              WordPress with no manual plugin configuration. Managed by the
+ *              Ansible role ccdc_wordpress - do not edit by hand.
+ *
+ * This is a Must-Use plugin: it loads on every request and is authoritative.
+ * It (1) overrides the authLDAPOptions so the settings are always the values
+ * below, and (2) ensures the authldap plugin appears in the active plugins list.
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+/*
+ * authLdap packs the bind account and search base into a single URI in the
+ * documented format: ldap://<bindDN>:<bindPassword>@<host>:<port>/<baseDN>
+ * The bind DN here is the svc_ldap service account created by ccdc_ad_accounts.
+ */
+if ( ! function_exists( 'ccdc_wordpress_authldap_options' ) ) {
+    function ccdc_wordpress_authldap_options( $value = array() ) {
+        return array(
+            'Enabled'        => true,
+            'CachePW'        => true,
+            'Debug'          => false,
+            'URI'            => 'ldap://{{ ccdc_wordpress_ldap_bind_dn }}:{{ ccdc_wordpress_ldap_bind_password }}@{{ ccdc_wordpress_ldap_host }}:{{ ccdc_wordpress_ldap_port }}/{{ ccdc_wordpress_ldap_base_dn }}',
+            'Filter'         => '{{ ccdc_wordpress_ldap_user_filter }}',
+            'NameAttr'       => '{{ ccdc_wordpress_ldap_name_attr }}',
+            'SecName'        => '',
+            'UidAttr'        => '{{ ccdc_wordpress_ldap_uid_attr }}',
+            'MailAttr'       => '{{ ccdc_wordpress_ldap_mail_attr }}',
+            'WebAttr'        => '',
+            'GroupAttr'      => '{{ ccdc_wordpress_ldap_group_attr }}',
+            'GroupSeparator' => ',',
+            'Groups'         => array(),
+            'GroupBase'      => '{{ ccdc_wordpress_ldap_base_dn }}',
+            'GroupFilter'    => '(&(objectClass=user)({{ ccdc_wordpress_ldap_group_attr }}=%s))',
+            'DefaultRole'    => '{{ ccdc_wordpress_ldap_default_role }}',
+            // No group->role mapping: any successfully authenticated AD user is
+            // granted DefaultRole. Group auth off so users are not rejected for
+            // not matching a mapped group.
+            'GroupEnable'    => false,
+            'GroupOverUser'  => false,
+            'DoNotOverwriteNonLdapUsers' => true,
+        );
+    }
+}
+
+/*
+ * Force the authLDAPOptions value on read so the config above is always
+ * authoritative (no repeated DB writes, fully idempotent).
+ */
+add_filter( 'option_authLDAPOptions', 'ccdc_wordpress_authldap_options', 99 );
+add_filter( 'default_option_authLDAPOptions', 'ccdc_wordpress_authldap_options', 99 );
+
+/*
+ * Ensure the authldap plugin is active without a manual click. mu-plugins load
+ * before regular plugins, so we inject it into the active-plugins list.
+ */
+if ( ! function_exists( 'ccdc_wordpress_force_authldap_active' ) ) {
+    function ccdc_wordpress_force_authldap_active( $plugins ) {
+        $target = 'authldap/authLdap.php';
+        if ( is_array( $plugins ) && ! in_array( $target, $plugins, true ) ) {
+            if ( file_exists( WP_PLUGIN_DIR . '/' . $target ) ) {
+                $plugins[] = $target;
+            }
+        }
+        return $plugins;
+    }
+}
+add_filter( 'option_active_plugins', 'ccdc_wordpress_force_authldap_active' );

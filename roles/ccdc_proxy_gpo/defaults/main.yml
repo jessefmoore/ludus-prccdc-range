@@ -1,0 +1,22 @@
+---
+# ===========================================================================
+# ccdc_proxy_gpo - create + link a GPO that points domain users at the Squid
+# proxy (WinINET / per-user proxy). Runs on the primary DC. Survives rebuilds
+# because it is created declaratively every deploy.
+# ===========================================================================
+
+ccdc_proxy_gpo_enabled: true
+
+# GPO name shown in Group Policy Management.
+ccdc_proxy_gpo_name: "CCDC Squid Proxy"
+
+# The Squid proxy host:port that clients are pointed at.
+ccdc_proxy_gpo_server: "10.50.10.40:3128"
+
+# Hosts/domains that bypass the proxy (go direct). Local + AD traffic.
+ccdc_proxy_gpo_bypass: "<local>;10.50.10.*;10.50.20.*;10.50.30.*;10.50.40.*;*.prccdc.local;localhost;127.0.0.1"
+
+# Where to link the GPO. Empty = domain root (all domain users get the proxy).
+# Set to an OU DN (e.g. "OU=Employees,OU=CCDC,DC=prccdc,DC=local") to target a
+# subset of users instead.
+ccdc_proxy_gpo_link_dn: ""

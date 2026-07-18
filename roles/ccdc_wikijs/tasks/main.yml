@@ -1,0 +1,199 @@
+---
+# ===========================================================================
+# ccdc_wikijs - deploy Wiki.js (+ PostgreSQL) via Docker Compose. Docker and
+# the `docker compose` plugin are already installed by geerlingguy.docker
+# (listed before this role); we do NOT install Docker here, and we never use
+# the community.docker collection.
+#
+# The administrator account is provisioned automatically by calling Wiki.js's
+# first-run `POST /finalize` setup endpoint (idempotent: if the instance is
+# already finalized, the step is skipped and the existing admin is untouched).
+# ===========================================================================
+
+- name: Create Wiki.js stack directory
+  ansible.builtin.file:
+    path: "{{ ccdc_wikijs_stack_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Template docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ ccdc_wikijs_stack_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  register: ccdc_wikijs_compose
+
+- name: Render the best-effort LDAP strategy seed SQL onto the box
+  ansible.builtin.template:
+    src: ldap-strategy.sql.j2
+    dest: "{{ ccdc_wikijs_stack_dir }}/ldap-strategy.sql"
+    owner: root
+    group: root
+    mode: "0640"
+
+- name: Drop the ready-to-paste LDAP/AD configuration reference on the box
+  ansible.builtin.copy:
+    src: ldap-config.md
+    dest: "{{ ccdc_wikijs_stack_dir }}/ldap-config.md"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Check whether the Wiki.js container is already running
+  ansible.builtin.command:
+    cmd: docker compose ps --status running --format '{{ "{{" }}.Service{{ "}}" }}'
+    chdir: "{{ ccdc_wikijs_stack_dir }}"
+  register: ccdc_wikijs_ps
+  changed_when: false
+  failed_when: false
+
+- name: Bring up the Wiki.js stack
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ ccdc_wikijs_stack_dir }}"
+  register: ccdc_wikijs_up
+  when: >-
+    ccdc_wikijs_compose is changed
+    or 'wiki' not in ccdc_wikijs_ps.stdout
+  changed_when: >-
+    ('Started' in ccdc_wikijs_up.stderr)
+    or ('Created' in ccdc_wikijs_up.stderr)
+    or ('Recreate' in ccdc_wikijs_up.stderr)
+
+# ---------------------------------------------------------------------------
+# Automated first-run setup: create the administrator account via /finalize.
+# ---------------------------------------------------------------------------
+- name: Compute the effective Wiki.js site URL
+  ansible.builtin.set_fact:
+    ccdc_wikijs_site_url_eff: >-
+      {{ ccdc_wikijs_site_url
+         | default('', true)
+         | ternary(ccdc_wikijs_site_url,
+                   'http://' ~ (ccdc_wikijs_host | default('', true)
+                   | ternary(ccdc_wikijs_host, ansible_default_ipv4.address | default('localhost')))
+                   ~ ':' ~ (ccdc_wikijs_port | string)) }}
+
+- name: Wait for the Wiki.js HTTP endpoint to accept connections
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ ccdc_wikijs_port }}/"
+    method: GET
+    status_code: [200, 302]
+  register: ccdc_wikijs_http
+  retries: 40
+  delay: 5
+  until: ccdc_wikijs_http.status in [200, 302]
+  failed_when: false
+
+# NOTE: Wiki.js creates the `users` table (empty) during first-boot DB
+# migrations, BEFORE the setup wizard runs. So we must detect completion by
+# whether an admin user actually EXISTS (row count > 0), not by table presence
+# — otherwise a fresh deploy skips /finalize and the site is never set up.
+- name: Count existing Wiki.js users (0 => setup not finalized yet)
+  ansible.builtin.command:
+    cmd: >-
+      docker compose exec -T db
+      psql -U {{ ccdc_wikijs_db_user }} -d {{ ccdc_wikijs_db_name }}
+      -tAc "SELECT count(*) FROM users;"
+    chdir: "{{ ccdc_wikijs_stack_dir }}"
+  register: ccdc_wikijs_usercount
+  changed_when: false
+  failed_when: false
+
+- name: Finalize Wiki.js setup and create the administrator account (idempotent)
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ ccdc_wikijs_port }}/finalize"
+    method: POST
+    body_format: json
+    body:
+      telemetry: false
+      siteUrl: "{{ ccdc_wikijs_site_url_eff }}"
+      adminEmail: "{{ ccdc_wikijs_admin_email }}"
+      adminPassword: "{{ ccdc_wikijs_admin_password }}"
+      adminPasswordConfirm: "{{ ccdc_wikijs_admin_password }}"
+    status_code: [200, 201]
+    timeout: 120
+  register: ccdc_wikijs_finalize
+  no_log: true
+  changed_when: ccdc_wikijs_finalize.status in [200, 201]
+  failed_when: false
+  # Not finalized when the query errored (table absent) OR returned 0 users.
+  when: >-
+    ccdc_wikijs_usercount.rc != 0
+    or (ccdc_wikijs_usercount.stdout | trim | default('0', true)) in ['', '0']
+
+- name: Wait for Wiki.js to come back up after finalize
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ ccdc_wikijs_port }}/login"
+    method: GET
+    status_code: [200]
+  register: ccdc_wikijs_ready
+  retries: 40
+  delay: 5
+  until: ccdc_wikijs_ready.status == 200
+  failed_when: false
+  when: ccdc_wikijs_finalize is defined and ccdc_wikijs_finalize is changed
+
+# ---------------------------------------------------------------------------
+# Best-effort LDAP strategy seed. After finalize, the `authentication` table
+# exists, so the AD (LDAP) strategy is upserted and enabled. Non-fatal.
+# ---------------------------------------------------------------------------
+- name: Detect whether the Wiki.js authentication table exists yet
+  ansible.builtin.command:
+    cmd: >-
+      docker compose exec -T db
+      psql -U {{ ccdc_wikijs_db_user }} -d {{ ccdc_wikijs_db_name }}
+      -tAc "SELECT to_regclass('public.authentication');"
+    chdir: "{{ ccdc_wikijs_stack_dir }}"
+  register: ccdc_wikijs_authtbl
+  changed_when: false
+  failed_when: false
+  when: ccdc_wikijs_seed_ldap | bool
+
+- name: Seed / upsert the Active Directory (LDAP) auth strategy (best-effort)
+  ansible.builtin.shell:
+    cmd: >-
+      docker compose exec -T db
+      psql -U {{ ccdc_wikijs_db_user }} -d {{ ccdc_wikijs_db_name }}
+      -v ON_ERROR_STOP=1
+      < {{ ccdc_wikijs_stack_dir }}/ldap-strategy.sql
+    chdir: "{{ ccdc_wikijs_stack_dir }}"
+  register: ccdc_wikijs_seed
+  changed_when: "'INSERT' in ccdc_wikijs_seed.stdout or 'UPDATE' in ccdc_wikijs_seed.stdout"
+  failed_when: false
+  when:
+    - ccdc_wikijs_seed_ldap | bool
+    - ccdc_wikijs_authtbl is defined
+    - "'authentication' in (ccdc_wikijs_authtbl.stdout | default(''))"
+
+- name: Restart Wiki.js so it reloads the seeded auth strategy
+  ansible.builtin.command:
+    cmd: docker compose restart wiki
+    chdir: "{{ ccdc_wikijs_stack_dir }}"
+  changed_when: true
+  failed_when: false
+  when:
+    - ccdc_wikijs_seed_ldap | bool
+    - ccdc_wikijs_seed is defined
+    - ccdc_wikijs_seed is changed
+
+- name: Report where to reach Wiki.js and how AD login is wired
+  ansible.builtin.debug:
+    msg: >-
+      Wiki.js is up at {{ ccdc_wikijs_site_url_eff }} .
+      Admin account {{ ccdc_wikijs_admin_email }} was auto-provisioned via /finalize
+      (password from ccdc_wikijs_admin_password)
+      {% if ccdc_wikijs_finalize is defined and ccdc_wikijs_finalize is changed -%}
+      -- created on this run.
+      {%- else -%}
+      -- instance was already finalized, existing admin left untouched.
+      {%- endif %}
+      {% if ccdc_wikijs_seed is defined and ccdc_wikijs_seed is changed -%}
+      Active Directory (LDAP) login strategy was seeded and enabled.
+      {%- else -%}
+      If AD login is not yet visible, enable it in the admin UI using
+      {{ ccdc_wikijs_stack_dir }}/ldap-config.md.
+      {%- endif %}

@@ -1,0 +1,244 @@
+---
+# =============================================================================
+# ccdc_wordpress - install WordPress on Windows Server 2022 via a XAMPP stack
+# =============================================================================
+# Flow: install XAMPP (Apache+PHP+MariaDB) -> stage + extract WordPress ->
+# register Apache/MariaDB as Windows services -> create DB + app user ->
+# template wp-config.php -> open the firewall for HTTP.
+
+# ----------------------------------------------------------------------------
+# 1. Install the XAMPP stack via Chocolatey
+# ----------------------------------------------------------------------------
+- name: Install XAMPP (Apache + PHP + MariaDB) via Chocolatey
+  chocolatey.chocolatey.win_chocolatey:
+    name: "{{ ccdc_wordpress_choco_package }}"
+    state: present
+
+# ----------------------------------------------------------------------------
+# 2. Stage and extract WordPress into the Apache document root
+# ----------------------------------------------------------------------------
+- name: Ensure the temp/staging directory exists
+  ansible.windows.win_file:
+    path: "{{ ccdc_wordpress_temp_dir }}"
+    state: directory
+
+- name: Check whether WordPress is already extracted
+  ansible.windows.win_stat:
+    path: '{{ ccdc_wordpress_install_path }}\wp-settings.php'
+  register: ccdc_wordpress_core_stat
+
+- name: Download the WordPress archive
+  ansible.windows.win_get_url:
+    url: "{{ ccdc_wordpress_download_url }}"
+    dest: '{{ ccdc_wordpress_temp_dir }}\wordpress.zip'
+    force: false
+  when: not ccdc_wordpress_core_stat.stat.exists
+
+- name: Extract WordPress into the document root
+  community.windows.win_unzip:
+    src: '{{ ccdc_wordpress_temp_dir }}\wordpress.zip'
+    dest: "{{ ccdc_wordpress_docroot }}"
+    creates: '{{ ccdc_wordpress_install_path }}\wp-settings.php'
+  when: not ccdc_wordpress_core_stat.stat.exists
+
+# ----------------------------------------------------------------------------
+# 3. Register Apache and MariaDB as Windows services (persist across reboot)
+# ----------------------------------------------------------------------------
+- name: Check for the existing Apache service
+  ansible.windows.win_service_info:
+    name: "{{ ccdc_wordpress_apache_service_name }}"
+  register: ccdc_wordpress_apache_svc
+  failed_when: false
+
+- name: Check for the existing MariaDB service
+  ansible.windows.win_service_info:
+    name: "{{ ccdc_wordpress_mysql_service_name }}"
+  register: ccdc_wordpress_mysql_svc
+  failed_when: false
+
+- name: Register the XAMPP Apache Windows service
+  ansible.windows.win_command: apache_installservice.bat
+  args:
+    chdir: '{{ ccdc_wordpress_xampp_root }}\apache'
+  register: ccdc_wordpress_apache_install
+  changed_when: ccdc_wordpress_apache_install.rc == 0
+  when: not (ccdc_wordpress_apache_svc.exists | default(false))
+
+- name: Register the XAMPP MariaDB Windows service
+  ansible.windows.win_command: mysql_installservice.bat
+  args:
+    chdir: '{{ ccdc_wordpress_xampp_root }}\mysql'
+  register: ccdc_wordpress_mysql_install
+  changed_when: ccdc_wordpress_mysql_install.rc == 0
+  when: not (ccdc_wordpress_mysql_svc.exists | default(false))
+
+- name: Ensure MariaDB service is started and set to auto-start
+  ansible.windows.win_service:
+    name: "{{ ccdc_wordpress_mysql_service_name }}"
+    state: started
+    start_mode: auto
+
+- name: Ensure Apache service is started and set to auto-start
+  ansible.windows.win_service:
+    name: "{{ ccdc_wordpress_apache_service_name }}"
+    state: started
+    start_mode: auto
+
+# ----------------------------------------------------------------------------
+# 3b. Enable the PHP ldap extension — REQUIRED by authLdap for AD login
+# ----------------------------------------------------------------------------
+- name: Enable the php_ldap extension in php.ini (uncomment / ensure present)
+  community.windows.win_lineinfile:
+    path: '{{ ccdc_wordpress_xampp_root }}\php\php.ini'
+    regexp: '^\s*;?\s*extension\s*=\s*ldap\s*$'
+    line: 'extension=ldap'
+  register: ccdc_wordpress_php_ldap
+
+- name: Restart Apache to load php_ldap
+  ansible.windows.win_service:
+    name: "{{ ccdc_wordpress_apache_service_name }}"
+    state: restarted
+  when: ccdc_wordpress_php_ldap is changed
+
+# ----------------------------------------------------------------------------
+# 4. Create the WordPress database and application user in MariaDB
+# ----------------------------------------------------------------------------
+# Idempotent: CREATE DATABASE/USER use IF NOT EXISTS and GRANT is a no-op when
+# the privilege already exists. The root auth flag is built once so an optional
+# root password is passed as -p<pass> (no space) when set.
+- name: Build the MariaDB root auth argument
+  ansible.builtin.set_fact:
+    ccdc_wordpress_mysql_root_auth: >-
+      -u {{ ccdc_wordpress_db_root_user }}{{ ' -p' + ccdc_wordpress_db_root_password if ccdc_wordpress_db_root_password | length > 0 else '' }}
+
+- name: Check whether the WordPress database already exists
+  ansible.windows.win_command: >-
+    {{ ccdc_wordpress_xampp_root }}\mysql\bin\mysql.exe {{ ccdc_wordpress_mysql_root_auth }}
+    -N -B -e "SHOW DATABASES LIKE '{{ ccdc_wordpress_db_name }}';"
+  register: ccdc_wordpress_db_check
+  changed_when: false
+
+- name: Create the WordPress database, user, and grants
+  ansible.windows.win_command: >-
+    {{ ccdc_wordpress_xampp_root }}\mysql\bin\mysql.exe {{ ccdc_wordpress_mysql_root_auth }}
+    -e "CREATE DATABASE IF NOT EXISTS {{ ccdc_wordpress_db_name }} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    CREATE USER IF NOT EXISTS '{{ ccdc_wordpress_db_user }}'@'{{ ccdc_wordpress_db_host }}' IDENTIFIED BY '{{ ccdc_wordpress_db_password }}';
+    ALTER USER '{{ ccdc_wordpress_db_user }}'@'{{ ccdc_wordpress_db_host }}' IDENTIFIED BY '{{ ccdc_wordpress_db_password }}';
+    GRANT ALL PRIVILEGES ON {{ ccdc_wordpress_db_name }}.* TO '{{ ccdc_wordpress_db_user }}'@'{{ ccdc_wordpress_db_host }}';
+    FLUSH PRIVILEGES;"
+  register: ccdc_wordpress_db_create
+  changed_when: ccdc_wordpress_db_check.stdout | trim | length == 0
+
+# ----------------------------------------------------------------------------
+# 5. Template wp-config.php with the DB credentials and salts
+# ----------------------------------------------------------------------------
+- name: Template wp-config.php into the WordPress directory
+  ansible.windows.win_template:
+    src: wp-config.php.j2
+    dest: '{{ ccdc_wordpress_install_path }}\wp-config.php'
+
+# ----------------------------------------------------------------------------
+# 6. Active Directory / LDAP authentication (authLdap plugin)
+# ----------------------------------------------------------------------------
+# Install the authLdap plugin and pre-seed + force-activate it via a mu-plugin
+# so AD users (prccdc.local) can log in with no manual plugin configuration.
+- name: Check whether the authLdap plugin is already extracted
+  ansible.windows.win_stat:
+    path: '{{ ccdc_wordpress_install_path }}\wp-content\plugins\authldap\authLdap.php'
+  register: ccdc_wordpress_authldap_stat
+  when: ccdc_wordpress_ldap_enabled | bool
+
+- name: Download the authLdap plugin archive
+  ansible.windows.win_get_url:
+    url: "{{ ccdc_wordpress_ldap_plugin_url }}"
+    dest: '{{ ccdc_wordpress_temp_dir }}\authldap.zip'
+    force: false
+  when:
+    - ccdc_wordpress_ldap_enabled | bool
+    - not ccdc_wordpress_authldap_stat.stat.exists
+
+- name: Extract the authLdap plugin into wp-content/plugins
+  community.windows.win_unzip:
+    src: '{{ ccdc_wordpress_temp_dir }}\authldap.zip'
+    dest: '{{ ccdc_wordpress_install_path }}\wp-content\plugins'
+    creates: '{{ ccdc_wordpress_install_path }}\wp-content\plugins\authldap\authLdap.php'
+  when:
+    - ccdc_wordpress_ldap_enabled | bool
+    - not ccdc_wordpress_authldap_stat.stat.exists
+
+- name: Ensure the mu-plugins directory exists
+  ansible.windows.win_file:
+    path: '{{ ccdc_wordpress_install_path }}\wp-content\mu-plugins'
+    state: directory
+  when: ccdc_wordpress_ldap_enabled | bool
+
+- name: Template the authLdap pre-config mu-plugin
+  ansible.windows.win_template:
+    src: ccdc-ldap-config.php.j2
+    dest: '{{ ccdc_wordpress_install_path }}\wp-content\mu-plugins\ccdc-ldap-config.php'
+  when: ccdc_wordpress_ldap_enabled | bool
+
+# ----------------------------------------------------------------------------
+# 7. Open the Windows Firewall for inbound HTTP
+# ----------------------------------------------------------------------------
+- name: Allow inbound HTTP through the Windows Firewall
+  community.windows.win_firewall_rule:
+    name: "CCDC WordPress HTTP ({{ ccdc_wordpress_http_port }})"
+    localport: "{{ ccdc_wordpress_http_port }}"
+    direction: in
+    action: allow
+    protocol: tcp
+    enabled: true
+    state: present
+
+# ----------------------------------------------------------------------------
+# 8. Publish the club-company static landing page (served at /<club_dir>/)
+# ----------------------------------------------------------------------------
+- name: Ensure the club static-site directory exists
+  ansible.windows.win_file:
+    path: '{{ ccdc_wordpress_docroot }}\{{ ccdc_wordpress_club_dir }}'
+    state: directory
+  when: ccdc_wordpress_club_enabled | bool
+
+- name: Deploy the club-company static landing page
+  ansible.windows.win_copy:
+    src: club-index.html
+    dest: '{{ ccdc_wordpress_docroot }}\{{ ccdc_wordpress_club_dir }}\index.html'
+  when: ccdc_wordpress_club_enabled | bool
+
+# ----------------------------------------------------------------------------
+# 9. Install WordPress core (WP-CLI) so the site is live and AD login works.
+#    Without this the DB has no WP tables and every page shows the setup wizard.
+# ----------------------------------------------------------------------------
+- name: Download WP-CLI (wp-cli.phar)
+  ansible.windows.win_get_url:
+    url: "{{ ccdc_wordpress_wpcli_url }}"
+    dest: '{{ ccdc_wordpress_install_path }}\wp-cli.phar'
+    force: false
+
+- name: Check whether WordPress core is already installed
+  ansible.windows.win_command: >-
+    "{{ ccdc_wordpress_xampp_root }}\php\php.exe" wp-cli.phar core is-installed
+    --path="{{ ccdc_wordpress_install_path }}"
+  args:
+    chdir: '{{ ccdc_wordpress_install_path }}'
+  register: ccdc_wordpress_wp_installed
+  changed_when: false
+  failed_when: false
+
+- name: Install WordPress core (creates tables + local admin)
+  ansible.windows.win_command: >-
+    "{{ ccdc_wordpress_xampp_root }}\php\php.exe" wp-cli.phar core install
+    --url="{{ ccdc_wordpress_site_url }}"
+    --title="{{ ccdc_wordpress_site_title }}"
+    --admin_user="{{ ccdc_wordpress_wp_admin_user }}"
+    --admin_password="{{ ccdc_wordpress_wp_admin_password }}"
+    --admin_email="{{ ccdc_wordpress_wp_admin_email }}"
+    --skip-email
+    --path="{{ ccdc_wordpress_install_path }}"
+  args:
+    chdir: '{{ ccdc_wordpress_install_path }}'
+  register: ccdc_wordpress_wp_install
+  when: ccdc_wordpress_wp_installed.rc != 0
+  changed_when: ccdc_wordpress_wp_install.rc == 0
+  no_log: false

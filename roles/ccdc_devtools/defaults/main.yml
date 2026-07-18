@@ -1,0 +1,71 @@
+---
+# ------------------------------------------------------------------------------
+# ccdc_devtools — defaults
+# All tunables are namespaced with the role name. Override any of these via
+# Ludus role_vars.
+# ------------------------------------------------------------------------------
+
+# Directory on the VM that holds the Docker Compose stack and its persistent
+# volumes. Created 0755.
+ccdc_devtools_dir: /opt/ccdc/devtools
+
+# --- Gitea ---------------------------------------------------------------------
+
+# Host port that maps to Gitea's web UI (container port 3000).
+ccdc_devtools_gitea_port: 3000
+
+# Host port that maps to Gitea's built-in SSH server (container port 22).
+ccdc_devtools_gitea_ssh_port: 2222
+
+# ROOT_URL Gitea advertises for clone links, webhooks, etc. Defaults to the
+# host's primary IP and the mapped web port. Override with a real hostname/IP
+# reachable by competitors, e.g. "http://10.2.20.30:3000/".
+ccdc_devtools_gitea_root_url: "http://{{ ansible_default_ipv4.address | default('localhost') }}:{{ ccdc_devtools_gitea_port }}/"
+
+# Gitea image tag. ":1" tracks the latest 1.x; pin to ":1.22" for reproducibility.
+ccdc_devtools_gitea_image: "gitea/gitea:1.22"
+
+# Initial Gitea admin account, created after first start via
+# `gitea admin user create`. OVERRIDE the password via role_vars in production.
+ccdc_devtools_gitea_admin_user: gitadmin
+ccdc_devtools_gitea_admin_password: "PRccdc-Gitea-2026!"
+ccdc_devtools_gitea_admin_email: "gitadmin@prccdc.local"
+
+# --- Gitea Active Directory / LDAP authentication -----------------------------
+# After Gitea is up, an LDAP (via BindDN) auth source named "PRCCDC-AD" is added
+# so AD users in the prccdc.local domain can log in with their AD accounts.
+# The bind account is the svc_ldap service account created on the DC by the
+# ccdc_ad_accounts role.
+
+# Domain controller / LDAP server IP (prefer the DC's DNS name if resolvable).
+ccdc_devtools_ldap_host: "10.2.10.10"
+
+# LDAP port. 389 = plaintext LDAP (matches --security-protocol unencrypted).
+ccdc_devtools_ldap_port: 389
+
+# Bind DN + password used to search the directory (svc_ldap service account).
+ccdc_devtools_ldap_bind_dn: "cn=svc_ldap,ou=ServiceAccounts,ou=CCDC,dc=prccdc,dc=local"
+ccdc_devtools_ldap_bind_password: "PRccdc-Svc-2026!"
+
+# Base DN to search for user objects under.
+ccdc_devtools_ldap_base_dn: "dc=prccdc,dc=local"
+
+# Display name of the auth source inside Gitea (used for the idempotency check).
+ccdc_devtools_ldap_source_name: "PRCCDC-AD"
+
+# --- Artifact repository (JFrog Artifactory OR Sonatype Nexus) -----------------
+
+# Which artifact repository to run alongside Gitea:
+#   nexus       -> Sonatype Nexus 3 (DEFAULT: light ~1.2 GB, reliable, UI on 8082)
+#   artifactory -> JFrog Artifactory OSS (heavy ~6 JVM services; needs dev01 = 12 GB)
+ccdc_devtools_artifact_backend: "nexus"
+
+# Host port that maps to the artifact repo UI/API (8082 for either backend).
+ccdc_devtools_artifactory_port: 8082
+
+# Host port that maps to Artifactory's legacy service (container 8081) — Artifactory only.
+ccdc_devtools_artifactory_router_port: 8081
+
+# Images. ":latest" is acceptable for a lab.
+ccdc_devtools_artifactory_image: "releases-docker.jfrog.io/jfrog/artifactory-oss:latest"
+ccdc_devtools_nexus_image: "sonatype/nexus3:latest"

@@ -1,0 +1,43 @@
+---
+- name: Install squid
+  ansible.builtin.apt:
+    name: squid
+    state: present
+    update_cache: true
+
+- name: Ensure squid log directory exists
+  ansible.builtin.file:
+    path: /var/log/squid
+    state: directory
+    owner: proxy
+    group: proxy
+    mode: "0755"
+
+- name: Ensure squid cache/spool directory exists
+  ansible.builtin.file:
+    path: /var/spool/squid
+    state: directory
+    owner: proxy
+    group: proxy
+    mode: "0750"
+
+- name: Template squid.conf
+  ansible.builtin.template:
+    src: squid.conf.j2
+    dest: /etc/squid/squid.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: squid -k parse -f %s
+  notify: Restart squid
+
+- name: Validate squid configuration
+  ansible.builtin.command:
+    cmd: squid -k parse
+  changed_when: false
+
+- name: Ensure squid is enabled and started
+  ansible.builtin.service:
+    name: squid
+    state: started
+    enabled: true

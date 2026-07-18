@@ -1,0 +1,62 @@
+---
+# ===========================================================================
+# ccdc_proxy_gpo - create the proxy GPO, set the WinINET proxy registry values
+# (User Configuration -> HKCU Internet Settings), and link it. Runs on the DC.
+# Idempotent: New-GPO/New-GPLink are guarded; Set-GPRegistryValue overwrites in
+# place. WinINET proxy is per-user, so this applies to any domain user at logon
+# (e.g. on CCDC-desk01) and persists across range rebuilds.
+# ===========================================================================
+
+- name: Create + configure + link the Squid proxy GPO
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    Import-Module GroupPolicy -ErrorAction Stop
+    $name   = '{{ ccdc_proxy_gpo_name }}'
+    $server = '{{ ccdc_proxy_gpo_server }}'
+    $bypass = '{{ ccdc_proxy_gpo_bypass }}'
+    $changed = $false
+
+    # 1) Ensure the GPO exists
+    $gpo = Get-GPO -Name $name -ErrorAction SilentlyContinue
+    if (-not $gpo) { $gpo = New-GPO -Name $name -Comment 'Points domain users at the CCDC Squid proxy'; $changed = $true; Write-Output 'GPO_CREATED' }
+
+    # 2) Set the per-user WinINET proxy registry values (User Configuration)
+    $key = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
+    function Ensure-Reg($vn, $type, $val) {
+      $cur = try { (Get-GPRegistryValue -Name $name -Key $key -ValueName $vn -ErrorAction Stop).Value } catch { $null }
+      if ("$cur" -ne "$val") {
+        Set-GPRegistryValue -Name $name -Key $key -ValueName $vn -Type $type -Value $val | Out-Null
+        Write-Output "REG_SET:$vn"
+        return $true
+      }
+      return $false
+    }
+    if (Ensure-Reg 'ProxyEnable'   'DWord'  1)       { $changed = $true }
+    if (Ensure-Reg 'ProxyServer'   'String' $server) { $changed = $true }
+    if (Ensure-Reg 'ProxyOverride' 'String' $bypass) { $changed = $true }
+    # Turn off "Automatically detect settings" so the static proxy is used.
+    if (Ensure-Reg 'AutoDetect'    'DWord'  0)       { $changed = $true }
+
+    # 3) Link the GPO (domain root unless an OU DN is supplied)
+    $target = '{{ ccdc_proxy_gpo_link_dn }}'
+    if ([string]::IsNullOrWhiteSpace($target)) { $target = (Get-ADDomain).DistinguishedName }
+    $linked = $false
+    try { (Get-GPInheritance -Target $target).GpoLinks | Where-Object { $_.DisplayName -eq $name } | ForEach-Object { $linked = $true } } catch { }
+    if (-not $linked) {
+      New-GPLink -Name $name -Target $target -LinkEnabled Yes -ErrorAction Stop | Out-Null
+      Write-Output "GPO_LINKED:$target"
+      $changed = $true
+    }
+
+    if ($changed) { Write-Output 'CHANGED' } else { Write-Output 'OK_NOCHANGE' }
+  register: ccdc_proxy_gpo_result
+  changed_when: "'CHANGED' in ccdc_proxy_gpo_result.stdout"
+  when: ccdc_proxy_gpo_enabled | bool
+
+- name: Show proxy GPO result
+  ansible.builtin.debug:
+    msg: >-
+      Proxy GPO '{{ ccdc_proxy_gpo_name }}' ensured -> {{ ccdc_proxy_gpo_server }}.
+      Domain users get the proxy at next logon / gpupdate (per-user WinINET).
+      Force now on a client: gpupdate /force  (then re-logon).
+  when: ccdc_proxy_gpo_enabled | bool

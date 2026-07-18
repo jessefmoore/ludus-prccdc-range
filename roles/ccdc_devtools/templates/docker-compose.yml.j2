@@ -1,0 +1,74 @@
+# {{ ansible_managed }}
+# CCDC devtools stack: Gitea (Git server) + JFrog Artifactory OSS (artifacts).
+# Managed by the ccdc_devtools Ansible role — edit defaults/main.yml, not this file.
+
+services:
+  gitea:
+    image: {{ ccdc_devtools_gitea_image }}
+    container_name: ccdc_gitea
+    restart: unless-stopped
+    environment:
+      # Run the container as root inside; simplest/most reliable for a lab.
+      USER_UID: "1000"
+      USER_GID: "1000"
+      # SQLite backend — no external DB container needed.
+      GITEA__database__DB_TYPE: sqlite3
+      GITEA__database__PATH: /data/gitea/gitea.db
+      # Lock the installer so the app is usable immediately (admin is created
+      # by the role via `gitea admin user create`).
+      GITEA__security__INSTALL_LOCK: "true"
+      GITEA__server__ROOT_URL: "{{ ccdc_devtools_gitea_root_url }}"
+      GITEA__server__HTTP_PORT: "3000"
+      # Advertise the mapped host SSH port so clone-over-SSH URLs are correct.
+      GITEA__server__SSH_PORT: "{{ ccdc_devtools_gitea_ssh_port }}"
+      # Use the image's built-in OpenSSH daemon (listens on container :22, mapped
+      # to the host SSH port below). Do NOT also start Gitea's Go SSH server, or
+      # both try to bind :22 and the container crash-loops.
+      GITEA__server__START_SSH_SERVER: "false"
+    volumes:
+      - gitea_data:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "{{ ccdc_devtools_gitea_port }}:3000"
+      - "{{ ccdc_devtools_gitea_ssh_port }}:22"
+
+{% if ccdc_devtools_artifact_backend == 'artifactory' %}
+  # JFrog Artifactory OSS — heavy (~6 JVM microservices). Needs a dedicated
+  # ~12 GB VM or its router (8082 UI) may not stay up. Select with
+  # ccdc_devtools_artifact_backend: artifactory  (and give dev01 12 GB RAM).
+  artifactory:
+    image: {{ ccdc_devtools_artifactory_image }}
+    container_name: ccdc_artifactory
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 32000
+        hard: 40000
+    volumes:
+      - artifactory_data:/var/opt/jfrog/artifactory
+    ports:
+      - "{{ ccdc_devtools_artifactory_port }}:8082"
+      - "{{ ccdc_devtools_artifactory_router_port }}:8081"
+{% else %}
+  # Sonatype Nexus 3 — the default artifact repository (JFrog-equivalent role,
+  # far lighter ~1.2 GB, reliable). UI + repos on 8081. First-boot admin
+  # password is written inside the container to /nexus-data/admin.password:
+  #   docker exec ccdc_nexus cat /nexus-data/admin.password
+  nexus:
+    image: {{ ccdc_devtools_nexus_image }}
+    container_name: ccdc_nexus
+    restart: unless-stopped
+    volumes:
+      - nexus_data:/nexus-data
+    ports:
+      - "{{ ccdc_devtools_artifactory_port }}:8081"
+{% endif %}
+
+volumes:
+  gitea_data:
+{% if ccdc_devtools_artifact_backend == 'artifactory' %}
+  artifactory_data:
+{% else %}
+  nexus_data:
+{% endif %}

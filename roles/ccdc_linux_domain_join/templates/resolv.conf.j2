@@ -1,0 +1,5 @@
+# {{ ansible_managed }}
+# Managed by ccdc_linux_domain_join — classic resolv.conf fallback (used when
+# systemd-resolved is not active). Points DNS at the Domain Controller.
+search {{ ccdc_domain }}
+nameserver {{ ccdc_dc_ip }}

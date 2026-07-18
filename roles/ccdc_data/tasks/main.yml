@@ -1,0 +1,44 @@
+---
+# =============================================================================
+# ccdc_data - deploy MySQL + MinIO via Docker Compose
+# =============================================================================
+# Docker and the `docker compose` plugin are assumed to be present already
+# (geerlingguy.docker runs before this role). This role only templates the
+# compose stack and brings it up. Safe to re-run.
+
+- name: Ensure the ccdc_data stack directory exists
+  ansible.builtin.file:
+    path: "{{ ccdc_data_stack_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Render the MySQL seed SQL
+  ansible.builtin.template:
+    src: seed.sql.j2
+    dest: "{{ ccdc_data_stack_dir }}/seed.sql"
+    owner: root
+    group: root
+    mode: "0644"
+  when: ccdc_data_mysql_seed | bool
+  register: ccdc_data_seed
+
+- name: Render the docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ ccdc_data_stack_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  register: ccdc_data_compose
+
+- name: Bring up the ccdc_data stack
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ ccdc_data_stack_dir }}"
+  register: ccdc_data_up
+  changed_when: >-
+    ('Started' in ccdc_data_up.stderr)
+    or ('Created' in ccdc_data_up.stderr)
+    or ('Recreate' in ccdc_data_up.stderr)

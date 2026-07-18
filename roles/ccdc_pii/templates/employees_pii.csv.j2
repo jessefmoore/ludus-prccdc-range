@@ -1,0 +1,18 @@
+#jinja2: trim_blocks:True, lstrip_blocks:True
+# {{ ccdc_pii_header }}
+name,ssn,dob,address,salary,email
+{% for i in range(ccdc_pii_employees_rows) %}
+{% set fn = ccdc_pii_first_names | random(seed='emp_fn' ~ i) %}
+{% set ln = ccdc_pii_last_names | random(seed='emp_ln' ~ i) %}
+{% set area = (100 | random(seed='emp_ar' ~ i)) + 900 %}
+{% set grp = '%02d' | format((90 | random(seed='emp_gr' ~ i)) + 10) %}
+{% set ser = '%04d' | format((8999 | random(seed='emp_se' ~ i)) + 1000) %}
+{% set yy = (35 | random(seed='emp_dy' ~ i)) + 1960 %}
+{% set mo = '%02d' | format((12 | random(seed='emp_mo' ~ i)) + 1) %}
+{% set dd = '%02d' | format((28 | random(seed='emp_dd' ~ i)) + 1) %}
+{% set num = (900 | random(seed='emp_num' ~ i)) + 100 %}
+{% set street = ccdc_pii_streets | random(seed='emp_st' ~ i) %}
+{% set city = ccdc_pii_cities | random(seed='emp_ci' ~ i) %}
+{% set salary = ((120 | random(seed='emp_sal' ~ i)) + 40) * 1000 %}
+{{ fn }} {{ ln }},{{ area }}-{{ grp }}-{{ ser }},{{ yy }}-{{ mo }}-{{ dd }},"{{ num }} {{ street }}, {{ city }}",{{ salary }},{{ fn | lower }}.{{ ln | lower }}@{{ ccdc_pii_email_domain }}
+{% endfor %}

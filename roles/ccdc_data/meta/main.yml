@@ -1,0 +1,25 @@
+---
+galaxy_info:
+  role_name: ccdc_data
+  namespace: ccdc
+  author: ccdc
+  description: >-
+    Deploy a data-services stack (MinIO S3-compatible object storage + MySQL
+    relational database) on an Ubuntu 22.04 VM via Docker Compose for a CCDC
+    range. Templates a compose file, brings the stack up, seeds MySQL with a
+    small sample schema, and initializes a MinIO bucket with a placeholder
+    object. Assumes Docker and the docker compose plugin are already installed.
+  license: MIT
+  min_ansible_version: "2.12"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - all
+  galaxy_tags:
+    - minio
+    - mysql
+    - s3
+    - database
+    - docker
+    - ccdc
+dependencies: []

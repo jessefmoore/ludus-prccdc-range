@@ -1,0 +1,271 @@
+# yaml-language-server: $schema=https://docs.ludus.cloud/schemas/range-config.json
+# =============================================================================
+# PRCCDC — Collegiate Cyber Defense Competition (CCDC) Range
+# =============================================================================
+# Range ID:      CCDC     (pinned rangeNumber 50  ->  all IPs are 10.50.<vlan>.<octet>)
+# AD Domain:     prccdc.local  (NetBIOS PRCCDC)
+# Domain Ctrlr:  CCDC-dc01 @ 10.50.10.10  (also the DNS server for every VM)
+#
+# Deploy (as admin, targeting the team user's range):
+#   putConfig  file=ccdc-range.yml  rangeID=CCDC  userID=<team-user>
+#   deployRange rangeID=CCDC userID=<team-user> tags=all
+#
+# Template substitutions (see docs/VMS.md — real OSes buildable via scripts/build-templates.sh):
+#   Alpine router/firewall -> Ludus native Debian router + firewall rules
+#   Windows 10 desktop     -> win11-22h2-x64-enterprise-template
+#   Debian 13 (dev01)      -> debian-12-x64-server-template
+#   Rocky (shop01/Magento) -> ubuntu-22.04-x64-server-template
+# =============================================================================
+
+ludus:
+  # ===========================================================================
+  # VLAN 10 — CORPORATE LAN
+  # ===========================================================================
+
+  # --- Active Directory Domain Controller + DNS (Windows Server 2016) --------
+  - vm_name: "{{ range_id }}-dc01"
+    hostname: "{{ range_id }}-dc01"
+    template: win2016-server-x64-template
+    vlan: 10
+    ip_last_octet: 10
+    ram_gb: 6
+    ram_min_gb: 3
+    cpus: 2
+    windows:
+      sysprep: false
+    domain:
+      fqdn: prccdc.local
+      role: primary-dc
+    roles:
+      - ccdc_ad_accounts
+      - ccdc_proxy_gpo
+      - aleemladha.ludus_wazuh_agent
+
+  # --- Windows Desktop (RDP/SSH, PII target files, uses Squid proxy) ---------
+  # NOTE: win11 template substitutes for the requested Windows 10 desktop.
+  - vm_name: "{{ range_id }}-desk01"
+    hostname: "{{ range_id }}-desk01"
+    template: win11-22h2-x64-enterprise-template
+    vlan: 10
+    ip_last_octet: 20
+    ram_gb: 6
+    ram_min_gb: 3
+    cpus: 2
+    windows:
+      sysprep: false
+      chocolatey_packages:
+        - openssh          # provides SSH server on the desktop (requirement: rdp/ssh)
+        - googlechrome
+      chocolatey_ignore_checksums: true
+    domain:
+      fqdn: prccdc.local
+      role: member
+    roles:
+      - ccdc_pii
+      - aleemladha.ludus_wazuh_agent
+
+  # --- Wiki.js (AD/LDAP login) ----------------------------------------------
+  - vm_name: "{{ range_id }}-wiki01"
+    hostname: "{{ range_id }}-wiki01"
+    template: ubuntu-22.04-x64-server-template
+    vlan: 10
+    ip_last_octet: 30
+    ram_gb: 4
+    ram_min_gb: 2
+    cpus: 2
+    linux: true
+    primary_dns_server: "10.50.10.10"
+    roles:
+      - ccdc_linux_domain_join
+      - geerlingguy.docker
+      - ccdc_wikijs
+      - aleemladha.ludus_wazuh_agent
+    role_vars:
+      ccdc_wikijs_ldap_host: "10.50.10.10"
+      ccdc_wikijs_ldap_bind_password: "PRccdc-Svc-2026!"
+
+  # --- Squid Forward Proxy ---------------------------------------------------
+  - vm_name: "{{ range_id }}-proxy01"
+    hostname: "{{ range_id }}-proxy01"
+    template: debian-12-x64-server-template
+    vlan: 10
+    ip_last_octet: 40
+    ram_gb: 2
+    ram_min_gb: 1
+    cpus: 1
+    linux: true
+    primary_dns_server: "10.50.10.10"
+    roles:
+      - ccdc_linux_domain_join
+      - ludus_squid
+      - aleemladha.ludus_wazuh_agent
+    role_vars:
+      ludus_squid_allowed_cidrs:
+        - "10.50.0.0/16"
+
+  # ===========================================================================
+  # VLAN 20 — DMZ (public-facing web)
+  # ===========================================================================
+
+  # --- WordPress / media web (Windows Server 2022) --------------------------
+  - vm_name: "{{ range_id }}-web01"
+    hostname: "{{ range_id }}-web01"
+    template: win2022-server-x64-template
+    vlan: 20
+    ip_last_octet: 10
+    ram_gb: 6
+    ram_min_gb: 3
+    cpus: 2
+    windows:
+      sysprep: false
+    domain:
+      fqdn: prccdc.local
+      role: member
+    roles:
+      - ccdc_wordpress
+      - aleemladha.ludus_wazuh_agent
+    role_vars:
+      ccdc_wordpress_ldap_host: "10.50.10.10"
+      ccdc_wordpress_ldap_bind_password: "PRccdc-Svc-2026!"
+
+  # --- Magento e-commerce (Ubuntu 22.04, substitutes for Rocky) -------------
+  - vm_name: "{{ range_id }}-shop01"
+    hostname: "{{ range_id }}-shop01"
+    template: ubuntu-22.04-x64-server-template
+    vlan: 20
+    ip_last_octet: 20
+    ram_gb: 8
+    ram_min_gb: 4
+    cpus: 4
+    linux: true
+    primary_dns_server: "10.50.10.10"
+    roles:
+      - ccdc_linux_domain_join
+      - geerlingguy.docker
+      - ccdc_magento
+      - aleemladha.ludus_wazuh_agent
+    role_vars:
+      ccdc_magento_host: "10.50.20.20"
+
+  # ===========================================================================
+  # VLAN 30 — INTERNAL SERVICES
+  # ===========================================================================
+
+  # --- Gitea + JFrog Artifactory (Debian 12, substitutes for Debian 13) -----
+  - vm_name: "{{ range_id }}-dev01"
+    hostname: "{{ range_id }}-dev01"
+    template: debian-12-x64-server-template
+    vlan: 30
+    ip_last_octet: 10
+    # Runs Gitea + Nexus 3 (default artifact repo). Bump to ram_gb/ram_min_gb 12
+    # only if switching ccdc_devtools_artifact_backend to heavy JFrog Artifactory.
+    ram_gb: 8
+    ram_min_gb: 4
+    cpus: 4
+    linux: true
+    primary_dns_server: "10.50.10.10"
+    roles:
+      - ccdc_linux_domain_join
+      - geerlingguy.docker
+      - ccdc_devtools
+      - aleemladha.ludus_wazuh_agent
+    role_vars:
+      ccdc_devtools_ldap_host: "10.50.10.10"
+      ccdc_devtools_ldap_bind_password: "PRccdc-Svc-2026!"
+      ccdc_devtools_gitea_root_url: "http://10.50.30.10:3000/"
+
+  # --- MinIO object store + MySQL database (Ubuntu 22.04) -------------------
+  - vm_name: "{{ range_id }}-data01"
+    hostname: "{{ range_id }}-data01"
+    template: ubuntu-22.04-x64-server-template
+    vlan: 30
+    ip_last_octet: 20
+    ram_gb: 4
+    ram_min_gb: 2
+    cpus: 2
+    linux: true
+    primary_dns_server: "10.50.10.10"
+    roles:
+      - ccdc_linux_domain_join
+      - geerlingguy.docker
+      - ccdc_data
+      - aleemladha.ludus_wazuh_agent
+
+  # --- Keycloak SSO + waitAPI + RideAPI (Ubuntu 22.04) ----------------------
+  - vm_name: "{{ range_id }}-sso01"
+    hostname: "{{ range_id }}-sso01"
+    template: ubuntu-22.04-x64-server-template
+    vlan: 30
+    ip_last_octet: 30
+    ram_gb: 6
+    ram_min_gb: 3
+    cpus: 2
+    linux: true
+    primary_dns_server: "10.50.10.10"
+    roles:
+      - ccdc_linux_domain_join
+      - geerlingguy.docker
+      - ccdc_sso
+      - aleemladha.ludus_wazuh_agent
+
+  # ===========================================================================
+  # VLAN 40 — SECURITY / MONITORING
+  # ===========================================================================
+
+  # --- Wazuh SIEM manager (Ubuntu 22.04) ------------------------------------
+  - vm_name: "{{ range_id }}-wazuh01"
+    hostname: "{{ range_id }}-wazuh01"
+    template: ubuntu-22.04-x64-server-template
+    vlan: 40
+    ip_last_octet: 10
+    ram_gb: 8
+    ram_min_gb: 4
+    cpus: 4
+    linux: true
+    primary_dns_server: "10.50.10.10"
+    roles:
+      - ccdc_linux_domain_join
+      - aleemladha.wazuh_server_install
+
+# =============================================================================
+# NETWORK — flat/ACCEPT during build so all service + AD dependencies resolve.
+# See docs/NETWORK.md for the optional "competition hardening" segmented ruleset.
+# =============================================================================
+network:
+  inter_vlan_default: ACCEPT
+  external_default: ACCEPT
+  wireguard_vlan_default: ACCEPT
+
+# =============================================================================
+# DEFAULTS — Active Directory forest settings + global system settings
+# =============================================================================
+defaults:
+  ad_domain_functional_level: Win2012R2
+  ad_forest_functional_level: Win2012R2
+  ad_domain_admin: Administrator
+  ad_domain_admin_password: "PRccdc-Admin-2026!"
+  ad_domain_user: prccdcuser
+  ad_domain_user_password: "PRccdc-User-2026!"
+  ad_domain_safe_mode_password: "PRccdc-SafeMode-2026!"
+  timezone: America/Los_Angeles
+  snapshot_with_RAM: false
+  stale_hours: 0
+
+# =============================================================================
+# GLOBAL ROLE VARS — shared values passed to every role on every VM.
+# (All role variables are namespaced, so unused ones are harmless.)
+# =============================================================================
+global_role_vars:
+  # --- Linux AD domain join (ccdc_linux_domain_join) ---
+  ccdc_domain: prccdc.local
+  ccdc_domain_upper: PRCCDC.LOCAL
+  ccdc_domain_netbios: PRCCDC
+  ccdc_dc_ip: "10.50.10.10"
+  ccdc_join_user: Administrator
+  ccdc_join_password: "PRccdc-Admin-2026!"
+  ccdc_sudo_group: "domain admins"
+  # --- AD service/employee account passwords (ccdc_ad_accounts) ---
+  ccdc_ad_accounts_default_password: "PRccdc-Svc-2026!"
+  ccdc_ad_accounts_employee_password: "PRccdc-User-2026!"
+  # --- Wazuh agent -> point every agent at the manager (10.50.40.10) ---
+  ludus_wazuh_siem_server: "10.50.40.10"

@@ -1,0 +1,121 @@
+---
+# =============================================================================
+# ccdc_wordpress - default variables
+# =============================================================================
+# All variables are namespaced with the role name (ccdc_wordpress_) because
+# Ludus passes role_vars to every role on a VM. Override any of these via
+# role_vars in your Ludus range config.
+
+# ----------------------------------------------------------------------------
+# XAMPP / filesystem layout
+# ----------------------------------------------------------------------------
+# Chocolatey package that bundles Apache + PHP + MariaDB. xampp-80 ships PHP 8.0
+# and is the most reliable WordPress-on-Windows combo. Override to xampp-81 /
+# xampp-74 etc. if a different PHP is required.
+ccdc_wordpress_choco_package: "xampp-80"
+
+# Root of the XAMPP installation. C:\xampp is the Chocolatey/XAMPP default.
+ccdc_wordpress_xampp_root: 'C:\xampp'
+
+# Apache document root and the WordPress subfolder inside it. The site is served
+# from <docroot>\<site_dir>, i.e. C:\xampp\htdocs\wordpress by default.
+ccdc_wordpress_docroot: '{{ ccdc_wordpress_xampp_root }}\htdocs'
+ccdc_wordpress_site_dir: "wordpress"
+ccdc_wordpress_install_path: '{{ ccdc_wordpress_docroot }}\{{ ccdc_wordpress_site_dir }}'
+
+# Scratch directory used to stage the downloaded WordPress archive.
+ccdc_wordpress_temp_dir: 'C:\temp'
+
+# ----------------------------------------------------------------------------
+# WordPress download
+# ----------------------------------------------------------------------------
+# URL of the WordPress archive to install. Pin to a specific release
+# (e.g. https://wordpress.org/wordpress-6.5.zip) for a repeatable lab.
+ccdc_wordpress_download_url: "https://wordpress.org/latest.zip"
+
+# ----------------------------------------------------------------------------
+# Database (MariaDB bundled with XAMPP)
+# ----------------------------------------------------------------------------
+# Database name, application user, and password WordPress connects with.
+ccdc_wordpress_db_name: "wordpress"
+ccdc_wordpress_db_user: "wp_user"
+ccdc_wordpress_db_password: "PRccdc-WP-2026!"
+
+# Host the app user is granted from and the host WordPress uses to reach MariaDB.
+# XAMPP's MariaDB listens on 127.0.0.1:3306; root has no password by default.
+ccdc_wordpress_db_host: "localhost"
+ccdc_wordpress_db_root_user: "root"
+ccdc_wordpress_db_root_password: ""
+
+# Table prefix used by WordPress.
+ccdc_wordpress_table_prefix: "wp_"
+
+# ----------------------------------------------------------------------------
+# Windows service names
+# ----------------------------------------------------------------------------
+# Names XAMPP's install-service batch files register. Apache2.4 and mysql are
+# the XAMPP defaults; leave these unless XAMPP changes them.
+ccdc_wordpress_apache_service_name: "Apache2.4"
+ccdc_wordpress_mysql_service_name: "mysql"
+
+# ----------------------------------------------------------------------------
+# Networking / firewall
+# ----------------------------------------------------------------------------
+# TCP port Apache serves HTTP on (XAMPP default is 80).
+ccdc_wordpress_http_port: 80
+
+# ----------------------------------------------------------------------------
+# Active Directory / LDAP authentication (authLdap plugin)
+# ----------------------------------------------------------------------------
+# WordPress authenticates users against the CCDC Domain Controller so AD users
+# (domain prccdc.local) log in with their AD accounts. Implemented with the
+# authLdap plugin, pre-configured and force-activated via a mu-plugin so no
+# manual plugin setup is needed. Set ccdc_wordpress_ldap_enabled: false to skip.
+ccdc_wordpress_ldap_enabled: true
+
+# URL of the authLdap plugin zip. Pin to a specific release for a repeatable lab.
+ccdc_wordpress_ldap_plugin_url: "https://downloads.wordpress.org/plugin/authldap.latest-stable.zip"
+
+# Directory service (the CCDC Domain Controller for prccdc.local).
+ccdc_wordpress_ldap_host: "10.2.10.10"
+ccdc_wordpress_ldap_port: 389
+
+# LDAP URI authLdap connects with (built from host/port above by default).
+ccdc_wordpress_ldap_uri: "ldap://{{ ccdc_wordpress_ldap_host }}:{{ ccdc_wordpress_ldap_port }}/"
+
+# Search base for user lookups.
+ccdc_wordpress_ldap_base_dn: "dc=prccdc,dc=local"
+
+# Bind (service) account used to search the directory. Created by ccdc_ad_accounts.
+ccdc_wordpress_ldap_bind_dn: "cn=svc_ldap,ou=ServiceAccounts,ou=CCDC,dc=prccdc,dc=local"
+ccdc_wordpress_ldap_bind_password: "PRccdc-Svc-2026!"
+
+# User search filter. %s is replaced by the login the user types (sAMAccountName).
+ccdc_wordpress_ldap_user_filter: "(&(objectClass=user)(sAMAccountName=%s))"
+
+# AD attributes authLdap maps onto the WordPress user profile.
+ccdc_wordpress_ldap_name_attr: "displayName"
+ccdc_wordpress_ldap_mail_attr: "mail"
+ccdc_wordpress_ldap_group_attr: "memberOf"
+ccdc_wordpress_ldap_uid_attr: "sAMAccountName"
+
+# WordPress role assigned to AD users that authenticate but match no group rule.
+ccdc_wordpress_ldap_default_role: "subscriber"
+
+# ---------------------------------------------------------------------------
+# Club-company static landing page (served by Apache at http://<web01>/<dir>/).
+# A self-contained HTML page themed like a cybersecurity club (grayhats.club).
+# ---------------------------------------------------------------------------
+ccdc_wordpress_club_enabled: true
+ccdc_wordpress_club_dir: "club"
+
+# ---------------------------------------------------------------------------
+# WordPress core install (WP-CLI). Without this the DB has no WP tables.
+# site_url derives from the VM's ansible_host (e.g. http://10.50.20.10/wordpress).
+# ---------------------------------------------------------------------------
+ccdc_wordpress_wpcli_url: "https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar"
+ccdc_wordpress_site_url: "http://{{ ansible_host }}/wordpress"
+ccdc_wordpress_site_title: "PRCCDC GrayHats Club"
+ccdc_wordpress_wp_admin_user: "wpadmin"
+ccdc_wordpress_wp_admin_password: "PRccdc-WP-Admin-2026!"
+ccdc_wordpress_wp_admin_email: "wpadmin@prccdc.local"

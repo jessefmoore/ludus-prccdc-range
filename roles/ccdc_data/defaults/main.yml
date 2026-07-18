@@ -1,0 +1,46 @@
+---
+# =============================================================================
+# ccdc_data - default variables
+# =============================================================================
+# All variables are namespaced with the role name (ccdc_data_) because Ludus
+# passes role_vars to every role on a VM. Override any of these via role_vars
+# in your Ludus range config.
+
+# ----------------------------------------------------------------------------
+# Filesystem layout
+# ----------------------------------------------------------------------------
+# Directory on the target VM where the Docker Compose stack lives. Created 0755.
+ccdc_data_stack_dir: "/opt/ccdc/data"
+
+# ----------------------------------------------------------------------------
+# MySQL
+# ----------------------------------------------------------------------------
+# Container image (pinned to the 8 major tag) and published host port.
+ccdc_data_mysql_image: "mysql:8"
+ccdc_data_mysql_port: 3306
+
+# Root password, application database, application user and its password.
+ccdc_data_mysql_root_password: "PRccdc-MySQL-Root-2026!"
+ccdc_data_mysql_database: "appdb"
+ccdc_data_mysql_user: "appuser"
+ccdc_data_mysql_password: "PRccdc-MySQL-2026!"
+
+# Seed the application database with a small sample schema (customers, orders)
+# on first initialization. Set to false to start with an empty database.
+ccdc_data_mysql_seed: true
+
+# ----------------------------------------------------------------------------
+# MinIO
+# ----------------------------------------------------------------------------
+# Container image and published host ports for the S3 API and web console.
+ccdc_data_minio_image: "minio/minio:latest"
+ccdc_data_minio_api_port: 9000
+ccdc_data_minio_console_port: 9001
+
+# Root (admin) credentials used for the console login and the mc client.
+ccdc_data_minio_root_user: "ccdcadmin"
+ccdc_data_minio_root_password: "PRccdc-Minio-2026!"
+
+# Bucket created on first startup, plus the mc client image used to create it.
+ccdc_data_minio_bucket: "company-data"
+ccdc_data_minio_mc_image: "minio/mc"

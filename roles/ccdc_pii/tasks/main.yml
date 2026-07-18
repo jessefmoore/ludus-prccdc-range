@@ -1,0 +1,61 @@
+---
+# Plant synthetic (clearly-fake) PII files on a Windows desktop VM as CCDC
+# blue-team target data. All modules are idempotent; win_template / win_copy
+# only change the file when the rendered content differs.
+
+- name: Ensure PII target directories exist
+  ansible.windows.win_file:
+    path: "{{ item }}"
+    state: directory
+  loop:
+    - "{{ ccdc_pii_data_dir }}"
+    - "{{ ccdc_pii_desktop_dir }}"
+    - "{{ ccdc_pii_hr_dir }}"
+
+- name: Plant customer credit-card data (public TEST PANs only)
+  ansible.windows.win_template:
+    src: customer_cards.csv.j2
+    dest: '{{ ccdc_pii_data_dir }}\customer_cards.csv'
+
+- name: Plant employee PII records (invalid-range SSNs, fake addresses)
+  ansible.windows.win_template:
+    src: employees_pii.csv.j2
+    dest: '{{ ccdc_pii_hr_dir }}\employees_pii.csv'
+
+- name: Plant bank-account data (clearly-fake routing/account numbers)
+  ansible.windows.win_template:
+    src: bank_accounts.csv.j2
+    dest: '{{ ccdc_pii_data_dir }}\bank_accounts.csv'
+
+- name: Plant fake IT password vault (weak passwords, poorly secured)
+  ansible.windows.win_template:
+    src: passwords.txt.j2
+    dest: '{{ ccdc_pii_desktop_dir }}\passwords.txt'
+
+- name: Plant confidential-data marker note
+  ansible.windows.win_copy:
+    dest: '{{ ccdc_pii_desktop_dir }}\README_CONFIDENTIAL.txt'
+    content: |
+      {{ ccdc_pii_header }}
+      ============================================================
+      CONFIDENTIAL - INTERNAL USE ONLY
+      ============================================================
+
+      The files in these folders contain sensitive company records:
+
+        - Customer credit-card numbers   ({{ ccdc_pii_data_dir }}\customer_cards.csv)
+        - Employee personal information   ({{ ccdc_pii_hr_dir }}\employees_pii.csv)
+        - Corporate bank-account details  ({{ ccdc_pii_data_dir }}\bank_accounts.csv)
+        - IT credential vault             ({{ ccdc_pii_desktop_dir }}\passwords.txt)
+
+      This information is protected under company policy and applicable
+      regulations. Do NOT copy, email, or expose these files outside
+      approved systems. Unauthorized disclosure is a reportable incident.
+
+      ------------------------------------------------------------
+      NOTE FOR EXERCISE STAFF: every record in these files is
+      SYNTHETIC TEST DATA generated for a CCDC competition. Card
+      numbers are public network test PANs, SSNs use permanently
+      invalid ranges, and all names/addresses/accounts are fake.
+      No real person or account is represented.
+      ------------------------------------------------------------

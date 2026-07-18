@@ -1,0 +1,158 @@
+---
+# ccdc_pii role defaults. Every value is overridable via Ludus role_vars.
+# All generated data is SYNTHETIC test data (see README.md).
+
+# ---------------------------------------------------------------------------
+# Target directories on the Windows VM where the planted files are dropped.
+# ---------------------------------------------------------------------------
+ccdc_pii_data_dir: 'C:\CCDC-Data'
+ccdc_pii_desktop_dir: 'C:\Users\Public\Desktop\Sensitive'
+ccdc_pii_hr_dir: 'C:\Users\Public\Documents\HR'
+
+# ---------------------------------------------------------------------------
+# Row counts per generated file (overridable to make the target smaller/bigger).
+# ---------------------------------------------------------------------------
+ccdc_pii_customer_cards_rows: 25
+ccdc_pii_employees_rows: 20
+ccdc_pii_passwords_rows: 15
+ccdc_pii_bank_accounts_rows: 15
+
+# First line stamped into every generated file so it is unmistakably fake.
+ccdc_pii_header: "SYNTHETIC TEST DATA - CCDC COMPETITION - NOT REAL"
+
+# ---------------------------------------------------------------------------
+# Publicly-known TEST credit card numbers (PANs). These are the standard test
+# card numbers published by the card networks / payment processors for QA use.
+# They are NOT real cards and cannot be charged.
+# ---------------------------------------------------------------------------
+ccdc_pii_test_cards:
+  - {pan: '4111111111111111', type: 'Visa'}
+  - {pan: '4012888888881881', type: 'Visa'}
+  - {pan: '4222222222222', type: 'Visa'}
+  - {pan: '5555555555554444', type: 'Mastercard'}
+  - {pan: '5105105105105100', type: 'Mastercard'}
+  - {pan: '2223003122003222', type: 'Mastercard'}
+  - {pan: '378282246310005', type: 'Amex'}
+  - {pan: '371449635398431', type: 'Amex'}
+  - {pan: '6011111111111117', type: 'Discover'}
+  - {pan: '6011000990139424', type: 'Discover'}
+
+# ---------------------------------------------------------------------------
+# Name / address / value pools used to randomize (deterministically) the rows.
+# ---------------------------------------------------------------------------
+ccdc_pii_first_names:
+  - Amanda
+  - Brian
+  - Carlos
+  - Diana
+  - Edward
+  - Fatima
+  - Gregory
+  - Hannah
+  - Isaac
+  - Julia
+  - Kevin
+  - Laura
+  - Marcus
+  - Nadia
+  - Oscar
+  - Priya
+  - Quinn
+  - Rachel
+  - Samuel
+  - Teresa
+
+ccdc_pii_last_names:
+  - Anderson
+  - Baker
+  - Carter
+  - Diaz
+  - Evans
+  - Foster
+  - Garcia
+  - Hughes
+  - Ibrahim
+  - Jensen
+  - Khan
+  - Lopez
+  - Morgan
+  - Nguyen
+  - Ortiz
+  - Patel
+  - Reyes
+  - Sullivan
+  - Turner
+  - Vaughn
+
+ccdc_pii_streets:
+  - Maple Ave
+  - Oak Street
+  - Cedar Lane
+  - Pine Road
+  - Elm Court
+  - Birch Way
+  - Sunset Blvd
+  - Riverside Dr
+  - Meadow Trail
+  - Franklin St
+
+# City entries already include state + ZIP (embedded in a quoted CSV field).
+ccdc_pii_cities:
+  - "Springfield, IL 62704"
+  - "Riverton, WY 82501"
+  - "Fairview, TN 37062"
+  - "Franklin, OH 45005"
+  - "Clinton, IA 52732"
+  - "Georgetown, TX 78626"
+  - "Madison, WI 53703"
+  - "Salem, OR 97301"
+
+# Fake email domain (.test is a reserved TLD, guaranteed non-routable).
+ccdc_pii_email_domain: "examplecorp.test"
+
+ccdc_pii_banks:
+  - "First National Test Bank"
+  - "Union Sample Credit"
+  - "Lakeside Fake S&L"
+  - "Meridian Demo Bank"
+  - "Cascade Mock Trust"
+
+# Systems + weak passwords for the fake "IT password vault".
+ccdc_pii_systems:
+  - "DomainController"
+  - "FileServer01"
+  - "SQL-DB-Prod"
+  - "Exchange-Mail"
+  - "Firewall-Edge"
+  - "VPN-Gateway"
+  - "Backup-NAS"
+  - "WebServer-DMZ"
+  - "HR-Portal"
+  - "Finance-App"
+
+ccdc_pii_weak_passwords:
+  - "Password123"
+  - "Summer2024!"
+  - "admin"
+  - "Welcome1"
+  - "changeme"
+  - "Company@123"
+  - "letmein"
+  - "P@ssw0rd"
+  - "qwerty123"
+  - "Winter2023"
+  - "root1234"
+  - "Passw0rd!"
+  - "Test1234"
+  - "iloveyou"
+  - "Spring2025!"
+
+ccdc_pii_service_accounts:
+  - "administrator"
+  - "svc_backup"
+  - "svc_sql"
+  - "helpdesk"
+  - "sa"
+  - "root"
+  - "netadmin"
+  - "operator"

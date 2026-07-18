@@ -1,0 +1,61 @@
+---
+# {{ ansible_managed }}
+# ccdc_data stack: MySQL database + MinIO object storage (+ mc bucket init).
+# Managed by the ccdc_data Ludus role. Edit the role, not this generated file.
+
+services:
+  mysql:
+    image: "{{ ccdc_data_mysql_image }}"
+    container_name: ccdc_data_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: "{{ ccdc_data_mysql_root_password }}"
+      MYSQL_DATABASE: "{{ ccdc_data_mysql_database }}"
+      MYSQL_USER: "{{ ccdc_data_mysql_user }}"
+      MYSQL_PASSWORD: "{{ ccdc_data_mysql_password }}"
+    ports:
+      - "{{ ccdc_data_mysql_port }}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+{% if ccdc_data_mysql_seed %}
+      - ./seed.sql:/docker-entrypoint-initdb.d/seed.sql:ro
+{% endif %}
+
+  minio:
+    image: "{{ ccdc_data_minio_image }}"
+    container_name: ccdc_data_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: "{{ ccdc_data_minio_root_user }}"
+      MINIO_ROOT_PASSWORD: "{{ ccdc_data_minio_root_password }}"
+    ports:
+      - "{{ ccdc_data_minio_api_port }}:9000"
+      - "{{ ccdc_data_minio_console_port }}:9001"
+    volumes:
+      - minio_data:/data
+
+  # One-shot init container: waits for MinIO, sets an alias, creates the bucket
+  # and uploads a placeholder object, then exits. restart: "no" keeps it from
+  # looping after it finishes.
+  minio-mc:
+    image: "{{ ccdc_data_minio_mc_image }}"
+    container_name: ccdc_data_minio_mc
+    depends_on:
+      - minio
+    restart: "no"
+    entrypoint: >-
+      /bin/sh -c "
+      until /usr/bin/mc alias set ccdc http://minio:9000 '{{ ccdc_data_minio_root_user }}' '{{ ccdc_data_minio_root_password }}'; do
+        echo 'waiting for minio...'; sleep 2;
+      done;
+      /usr/bin/mc mb --ignore-existing ccdc/{{ ccdc_data_minio_bucket }};
+      printf 'CCDC data bucket placeholder object - created by ccdc_data role.\n' > /tmp/placeholder.txt;
+      /usr/bin/mc cp /tmp/placeholder.txt ccdc/{{ ccdc_data_minio_bucket }}/placeholder.txt;
+      echo 'ccdc_data minio init complete';
+      exit 0;
+      "
+
+volumes:
+  mysql_data:
+  minio_data:

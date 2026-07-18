@@ -1,0 +1,48 @@
+# {{ ansible_managed }}
+# Magento all-in-one stack for the CCDC range (alexcheng/magento2 + mysql:5.7).
+# Rendered by the ccdc_magento Ansible role. Do not edit by hand.
+# The web container auto-runs `magento setup:install` on first boot using the
+# MAGENTO_* env vars and connects to the `db` service (host must be named `db`).
+---
+services:
+  db:
+    image: {{ ccdc_magento_mysql_image }}
+    restart: unless-stopped
+    command: --max_allowed_packet=64M
+    environment:
+      - MYSQL_ROOT_PASSWORD={{ ccdc_magento_db_root_password }}
+      - MYSQL_DATABASE={{ ccdc_magento_db_name }}
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p{{ ccdc_magento_db_root_password }}"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+
+  magento:
+    image: {{ ccdc_magento_image }}
+    restart: unless-stopped
+    ports:
+      - "{{ ccdc_magento_port }}:80"
+    environment:
+      - MAGENTO_LANGUAGE={{ ccdc_magento_language }}
+      - MAGENTO_TIMEZONE={{ ccdc_magento_timezone }}
+      - MAGENTO_DEFAULT_CURRENCY={{ ccdc_magento_currency }}
+      - MAGENTO_URL=http://{{ ccdc_magento_host }}:{{ ccdc_magento_port }}
+      - MAGENTO_BACKEND_FRONTNAME={{ ccdc_magento_backend_frontname }}
+      - MAGENTO_USE_SECURE=0
+      - MAGENTO_BASE_URL_SECURE=0
+      - MAGENTO_USE_SECURE_ADMIN=0
+      - MAGENTO_ADMIN_FIRSTNAME={{ ccdc_magento_admin_firstname }}
+      - MAGENTO_ADMIN_LASTNAME={{ ccdc_magento_admin_lastname }}
+      - MAGENTO_ADMIN_EMAIL={{ ccdc_magento_admin_email }}
+      - MAGENTO_ADMIN_USERNAME={{ ccdc_magento_admin_user }}
+      - MAGENTO_ADMIN_PASSWORD={{ ccdc_magento_admin_password }}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db_data:
+    driver: local

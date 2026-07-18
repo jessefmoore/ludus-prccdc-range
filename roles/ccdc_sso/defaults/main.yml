@@ -1,0 +1,56 @@
+---
+# =============================================================================
+# ccdc_sso - default variables
+# =============================================================================
+# All variables are namespaced with the role name (ccdc_sso_) because Ludus
+# passes role_vars to EVERY role on a VM. Override any of these via role_vars
+# in your Ludus range config.
+
+# ----------------------------------------------------------------------------
+# Filesystem layout
+# ----------------------------------------------------------------------------
+# Root of the Docker Compose stack on the target VM. Created mode 0755.
+ccdc_sso_stack_dir: "/opt/ccdc/sso"
+
+# ----------------------------------------------------------------------------
+# Container images
+# ----------------------------------------------------------------------------
+ccdc_sso_postgres_image: "postgres:16"
+ccdc_sso_keycloak_image: "quay.io/keycloak/keycloak:latest"
+ccdc_sso_api_image: "nginx:alpine"
+
+# ----------------------------------------------------------------------------
+# Keycloak database (PostgreSQL)
+# ----------------------------------------------------------------------------
+ccdc_sso_postgres_db: "keycloak"
+ccdc_sso_postgres_user: "keycloak"
+ccdc_sso_postgres_password: "PRccdc-KcDB-2026!"
+
+# ----------------------------------------------------------------------------
+# Keycloak admin console
+# ----------------------------------------------------------------------------
+# Bootstrap admin account created on first start, and the host port the
+# Keycloak HTTP listener (container :8080) is published on.
+ccdc_sso_keycloak_admin: "admin"
+ccdc_sso_keycloak_admin_password: "PRccdc-Keycloak-2026!"
+ccdc_sso_keycloak_port: 8080
+
+# ----------------------------------------------------------------------------
+# Demo backend APIs (nginx:alpine serving static JSON)
+# ----------------------------------------------------------------------------
+# Host ports the two demo APIs (each container :80) are published on.
+ccdc_sso_waitapi_port: 8081
+ccdc_sso_rideapi_port: 8082
+
+# ---------------------------------------------------------------------------
+# Active Directory (prccdc.local) user federation for Keycloak.
+# Wired idempotently via kcadm after Keycloak starts (kc-federate.sh).
+# AD users can then log into any Keycloak-protected app in the realm below.
+# ---------------------------------------------------------------------------
+ccdc_sso_ad_ldap_enabled: true
+ccdc_sso_realm: "ccdc"
+ccdc_sso_ldap_host: "10.50.10.10"          # the AD DC / DNS server
+ccdc_sso_ldap_port: 389
+ccdc_sso_ldap_users_dn: "dc=prccdc,dc=local"
+ccdc_sso_ldap_bind_dn: "cn=svc_ldap,ou=ServiceAccounts,ou=CCDC,dc=prccdc,dc=local"
+ccdc_sso_ldap_bind_password: "PRccdc-Svc-2026!"

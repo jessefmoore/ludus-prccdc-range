@@ -1,0 +1,7 @@
+{{ ansible_managed | comment }}
+# Managed by ccdc_linux_domain_join — points DNS at the Domain Controller so the
+# AD domain and its SRV records resolve before/after the realm join.
+[Resolve]
+DNS={{ ccdc_dc_ip }}
+Domains={{ ccdc_domain }}
+FallbackDNS=

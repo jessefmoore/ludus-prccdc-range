@@ -1,0 +1,33 @@
+-- {{ ansible_managed }}
+-- ccdc_data sample schema. The mysql:8 image executes files in
+-- /docker-entrypoint-initdb.d/ once, on first database initialization only.
+-- Runs against the MYSQL_DATABASE ({{ ccdc_data_mysql_database }}).
+
+USE `{{ ccdc_data_mysql_database }}`;
+
+CREATE TABLE IF NOT EXISTS customers (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  email VARCHAR(150) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS orders (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  customer_id INT NOT NULL,
+  product VARCHAR(150) NOT NULL,
+  amount DECIMAL(10,2) NOT NULL,
+  order_date DATE NOT NULL,
+  FOREIGN KEY (customer_id) REFERENCES customers(id)
+);
+
+INSERT INTO customers (name, email) VALUES
+  ('Alice Johnson', 'alice.johnson@example.com'),
+  ('Bob Smith', 'bob.smith@example.com'),
+  ('Carol Nguyen', 'carol.nguyen@example.com');
+
+INSERT INTO orders (customer_id, product, amount, order_date) VALUES
+  (1, 'Widget Pro License', 199.99, '2026-01-15'),
+  (1, 'Support Plan', 49.00, '2026-02-01'),
+  (2, 'Data Migration Service', 1200.00, '2026-01-22'),
+  (3, 'Widget Starter Kit', 79.50, '2026-03-05');

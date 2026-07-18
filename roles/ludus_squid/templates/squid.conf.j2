@@ -1,0 +1,78 @@
+# {{ ansible_managed }}
+# Squid forward proxy for CCDC range machines.
+# Managed by the ccdc.ludus_squid role — manual edits will be overwritten.
+
+# ---------------------------------------------------------------------------
+# Listening port
+# ---------------------------------------------------------------------------
+http_port {{ ludus_squid_port | default(3128) }}
+
+visible_hostname {{ ludus_squid_visible_hostname | default('ccdc-proxy') }}
+
+# ---------------------------------------------------------------------------
+# Client access control — allowed subnets
+# ---------------------------------------------------------------------------
+{% for cidr in ludus_squid_allowed_cidrs %}
+acl ludus_allowed_clients src {{ cidr }}
+{% endfor %}
+
+# ---------------------------------------------------------------------------
+# Safe ports and SSL/CONNECT restrictions
+# ---------------------------------------------------------------------------
+acl SSL_ports port 443
+acl Safe_ports port 80          # http
+acl Safe_ports port 21          # ftp
+acl Safe_ports port 443         # https
+acl Safe_ports port 70          # gopher
+acl Safe_ports port 210         # wais
+acl Safe_ports port 1025-65535  # unregistered ports
+acl Safe_ports port 280         # http-mgmt
+acl Safe_ports port 488         # gss-http
+acl Safe_ports port 591         # filemaker
+acl Safe_ports port 777         # multiling http
+acl CONNECT method CONNECT
+
+# ---------------------------------------------------------------------------
+# Instructor domain blocklist
+# ---------------------------------------------------------------------------
+{% if ludus_squid_blocked_domains | length > 0 %}
+{% for domain in ludus_squid_blocked_domains %}
+acl ludus_blocked_domains dstdomain {{ domain }}
+{% endfor %}
+http_access deny ludus_blocked_domains
+{% endif %}
+
+# Deny requests to unknown/unsafe ports.
+http_access deny !Safe_ports
+
+# Deny CONNECT to anything other than SSL (https) ports.
+http_access deny CONNECT !SSL_ports
+
+# Only allow cachemgr access from localhost.
+http_access allow localhost manager
+http_access deny manager
+
+# Allow access from the configured client subnets.
+http_access allow ludus_allowed_clients
+
+# Always allow localhost.
+http_access allow localhost
+
+# Default deny: everything not explicitly allowed above.
+http_access deny all
+
+# ---------------------------------------------------------------------------
+# Cache and logging
+# ---------------------------------------------------------------------------
+cache_dir ufs /var/spool/squid 100 16 256
+
+access_log /var/log/squid/access.log squid
+cache_log /var/log/squid/cache.log
+
+coredump_dir /var/spool/squid
+
+# Standard refresh patterns.
+refresh_pattern ^ftp:           1440    20%     10080
+refresh_pattern ^gopher:        1440    0%      1440
+refresh_pattern -i (/cgi-bin/|\?) 0     0%      0
+refresh_pattern .               0       20%     4320

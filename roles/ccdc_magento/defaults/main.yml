@@ -1,0 +1,62 @@
+---
+# ===========================================================================
+# ccdc_magento - all tunables (namespaced with the role name to avoid
+# collisions, since Ludus passes role_vars to every role on a VM).
+#
+# Uses the self-contained alexcheng/magento2 image (Apache+PHP+Magento) with a
+# mysql:5.7 backend. The :2.2 tag uses MySQL-based catalog search, so NO
+# Elasticsearch/OpenSearch container is required -> far more reliable to deploy.
+# (Bitnami removed its Magento images from Docker Hub in 2025.)
+# ===========================================================================
+
+# Directory that holds the docker-compose stack for Magento.
+ccdc_magento_stack_dir: /opt/ccdc/magento
+
+# ---------------------------------------------------------------------------
+# Magento admin (storefront back office) credentials.
+# Password MUST contain both letters and numbers, min 7 chars (Magento rule).
+# ---------------------------------------------------------------------------
+ccdc_magento_admin_user: admin
+ccdc_magento_admin_password: "PRccdc-Magento-2026!"
+ccdc_magento_admin_email: "admin@prccdc.local"
+ccdc_magento_admin_firstname: PRCCDC
+ccdc_magento_admin_lastname: Admin
+
+# ---------------------------------------------------------------------------
+# Public host / base URL Magento bakes into its config on first boot.
+# Set this to the shop VM's IP/DNS at DEPLOY TIME (role_vars) so storefront and
+# admin links resolve for clients (e.g. 10.50.20.20).
+# ---------------------------------------------------------------------------
+ccdc_magento_host: "localhost"
+
+# Host port mapped to the Magento container's HTTP (80) port.
+ccdc_magento_port: 8085
+
+# Locale / store settings baked in at install.
+ccdc_magento_language: en_US
+ccdc_magento_timezone: America/Los_Angeles
+ccdc_magento_currency: USD
+ccdc_magento_backend_frontname: admin
+
+# ---------------------------------------------------------------------------
+# MySQL backend. The alexcheng installer connects to host `db` as root with
+# these values, so keep them consistent with the compose `db` service.
+# ---------------------------------------------------------------------------
+ccdc_magento_db_name: magento2
+ccdc_magento_db_root_password: "magento2"
+
+# ---------------------------------------------------------------------------
+# Container image tags.
+# ---------------------------------------------------------------------------
+ccdc_magento_image: "alexcheng/magento2:2.2"
+ccdc_magento_mysql_image: "mysql:5.7"
+
+# ---------------------------------------------------------------------------
+# Best-effort AD/LDAP integration values (documented, not auto-applied).
+# See README "Active Directory / LDAP integration for Magento".
+# ---------------------------------------------------------------------------
+ccdc_magento_ldap_host: "10.50.10.10"
+ccdc_magento_ldap_bind_dn: "cn=svc_ldap,ou=ServiceAccounts,ou=CCDC,dc=prccdc,dc=local"
+ccdc_magento_ldap_bind_password: "PRccdc-Svc-2026!"
+ccdc_magento_ldap_base_dn: "dc=prccdc,dc=local"
+ccdc_magento_ldap_user_filter: "(&(objectClass=user)(sAMAccountName=%s))"

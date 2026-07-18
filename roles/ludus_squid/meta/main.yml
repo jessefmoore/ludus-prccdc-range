@@ -1,0 +1,21 @@
+---
+galaxy_info:
+  role_name: ludus_squid
+  namespace: ccdc
+  author: ccdc
+  description: Squid forward proxy for CCDC range machines to route web traffic through.
+  license: MIT
+  min_ansible_version: "2.12"
+  platforms:
+    - name: Debian
+      versions:
+        - all
+    - name: Ubuntu
+      versions:
+        - all
+  galaxy_tags:
+    - proxy
+    - squid
+    - ccdc
+    - networking
+dependencies: []

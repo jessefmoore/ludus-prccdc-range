@@ -1,0 +1,185 @@
+---
+# ==============================================================================
+# ccdc_linux_domain_join
+# Join a Debian/Ubuntu host to the AD domain via realmd + SSSD + adcli.
+# Order matters: preseed krb5 -> install -> fix DNS -> discover -> join ->
+# configure SSSD/PAM/sudo -> permit logins. Idempotent and safe to re-run.
+# ==============================================================================
+
+# --- Kerberos preseed --------------------------------------------------------
+# Set the default realm via debconf BEFORE krb5-user is installed so the
+# package install never blocks on an interactive prompt.
+- name: Preseed krb5 default realm (debconf) to avoid interactive prompt
+  ansible.builtin.debconf:
+    name: krb5-config
+    question: krb5-config/default_realm
+    value: "{{ ccdc_domain_upper }}"
+    vtype: string
+
+- name: Preseed krb5 add-servers-to-existing (debconf) to avoid prompt
+  ansible.builtin.debconf:
+    name: krb5-config
+    question: krb5-config/add_servers_realm
+    value: "{{ ccdc_domain_upper }}"
+    vtype: string
+
+# --- Package installation ----------------------------------------------------
+- name: Install realmd / SSSD / Kerberos client packages
+  ansible.builtin.apt:
+    name:
+      - realmd
+      - sssd
+      - sssd-tools
+      - adcli
+      - samba-common-bin
+      - krb5-user
+      - packagekit
+      - libnss-sss
+      - libpam-sss
+      - oddjob
+      - oddjob-mkhomedir
+      - libsss-sudo
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  register: ccdc_ldj_apt
+  retries: 3
+  delay: 10
+  until: ccdc_ldj_apt is succeeded
+
+# --- DNS: point the host at the DC so the AD domain resolves -----------------
+# Detect systemd-resolved so we can configure the correct resolver. Guard for
+# both the resolved and the classic /etc/resolv.conf cases.
+- name: Detect whether systemd-resolved is active
+  ansible.builtin.command: systemctl is-active systemd-resolved
+  register: ccdc_ldj_resolved_check
+  changed_when: false
+  failed_when: false
+
+- name: Record whether systemd-resolved is active
+  ansible.builtin.set_fact:
+    ccdc_ldj_resolved_active: "{{ ccdc_ldj_resolved_check.stdout | trim == 'active' }}"
+
+# ---- Case A: systemd-resolved is active ----
+- name: Configure DNS via /etc/systemd/resolved.conf (systemd-resolved)
+  ansible.builtin.template:
+    src: resolved.conf.j2
+    dest: /etc/systemd/resolved.conf
+    owner: root
+    group: root
+    mode: "0644"
+  when: ccdc_ldj_resolved_active
+  register: ccdc_ldj_resolved_conf
+
+- name: Restart systemd-resolved to apply DNS immediately (before join)
+  ansible.builtin.systemd:
+    name: systemd-resolved
+    state: restarted
+  when:
+    - ccdc_ldj_resolved_active
+    - ccdc_ldj_resolved_conf is changed
+
+# ---- Case B: classic resolv.conf (no systemd-resolved) ----
+- name: Configure DNS via classic /etc/resolv.conf
+  ansible.builtin.template:
+    src: resolv.conf.j2
+    dest: /etc/resolv.conf
+    owner: root
+    group: root
+    mode: "0644"
+  when: not ccdc_ldj_resolved_active
+
+# --- Verify the domain resolves / is discoverable BEFORE joining -------------
+- name: Verify the AD domain is resolvable and discoverable (realm discover)
+  ansible.builtin.command: realm discover {{ ccdc_domain }}
+  register: ccdc_ldj_discover
+  changed_when: false
+  retries: 6
+  delay: 5
+  until: ccdc_ldj_discover.rc == 0
+
+# --- Idempotent join ---------------------------------------------------------
+- name: Check current realm membership
+  ansible.builtin.command: realm list --name-only
+  register: ccdc_ldj_realm_list
+  changed_when: false
+
+- name: Join the host to the AD domain (realm join)
+  ansible.builtin.shell:
+    cmd: >-
+      echo '{{ ccdc_join_password }}' | realm join
+      --user='{{ ccdc_join_user }}'
+      {% if ccdc_computer_ou | length > 0 %}--computer-ou='{{ ccdc_computer_ou }}' {% endif %}
+      '{{ ccdc_domain }}'
+  register: ccdc_ldj_join
+  when: ccdc_domain not in ccdc_ldj_realm_list.stdout_lines
+  changed_when: ccdc_ldj_join.rc == 0
+  no_log: true
+  notify: Restart sssd
+
+# --- SSSD configuration ------------------------------------------------------
+# Overwrite the realm-generated sssd.conf with our managed template. Must be
+# mode 0600 or SSSD refuses to start.
+- name: Deploy managed /etc/sssd/sssd.conf
+  ansible.builtin.template:
+    src: sssd.conf.j2
+    dest: /etc/sssd/sssd.conf
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart sssd
+
+# --- PAM: create home directories on first login -----------------------------
+- name: Check whether the mkhomedir PAM profile is already enabled
+  ansible.builtin.command: grep -q pam_mkhomedir /etc/pam.d/common-session
+  register: ccdc_ldj_mkhomedir
+  changed_when: false
+  failed_when: false
+
+- name: Enable home directory creation on login (pam-auth-update mkhomedir)
+  ansible.builtin.command: pam-auth-update --enable mkhomedir
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  when: ccdc_ldj_mkhomedir.rc != 0
+  changed_when: true
+
+- name: Ensure oddjobd is enabled and running (home-dir helper)
+  ansible.builtin.service:
+    name: oddjobd
+    state: started
+    enabled: true
+  failed_when: false
+
+# --- Sudo for the AD group ---------------------------------------------------
+- name: Grant sudo to the AD sudo group via sudoers drop-in
+  ansible.builtin.template:
+    src: sudoers_ad_group.j2
+    dest: /etc/sudoers.d/ccdc-ad-sudo
+    owner: root
+    group: root
+    mode: "0440"
+    validate: visudo -cf %s
+
+# --- Apply pending SSSD restart before permitting logins ---------------------
+- name: Apply pending handlers (restart SSSD) before permitting logins
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure SSSD is enabled and running
+  ansible.builtin.service:
+    name: sssd
+    state: started
+    enabled: true
+
+# --- Realm login permissions -------------------------------------------------
+- name: Permit all domain users to log in (lab default)
+  ansible.builtin.command: realm permit --all
+  when: ccdc_allowed_login_groups | length == 0
+  changed_when: false
+
+- name: Permit specific AD groups to log in
+  ansible.builtin.command: realm permit --groups '{{ item }}'
+  loop: "{{ ccdc_allowed_login_groups }}"
+  when: ccdc_allowed_login_groups | length > 0
+  changed_when: false

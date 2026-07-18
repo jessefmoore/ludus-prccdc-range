@@ -1,0 +1,5 @@
+{{ ansible_managed | comment }}
+# Managed by ccdc_linux_domain_join — grants sudo to an AD group.
+# SSSD presents the group name lower-cased with spaces preserved; escape spaces
+# with a backslash and reference the group with a leading %.
+%{{ ccdc_sudo_group | lower | replace(' ', '\\ ') }} ALL=(ALL:ALL) ALL

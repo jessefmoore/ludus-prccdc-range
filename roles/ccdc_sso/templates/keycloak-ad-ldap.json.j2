@@ -1,0 +1,27 @@
+{
+  "name": "ad-ldap",
+  "providerId": "ldap",
+  "providerType": "org.keycloak.storage.UserStorageProvider",
+  "config": {
+    "enabled": ["true"],
+    "priority": ["1"],
+    "editMode": ["READ_ONLY"],
+    "vendor": ["ad"],
+    "connectionUrl": ["ldap://{{ ccdc_sso_ldap_host }}:{{ ccdc_sso_ldap_port }}"],
+    "usersDn": ["{{ ccdc_sso_ldap_users_dn }}"],
+    "bindDn": ["{{ ccdc_sso_ldap_bind_dn }}"],
+    "bindCredential": ["{{ ccdc_sso_ldap_bind_password }}"],
+    "usernameLDAPAttribute": ["sAMAccountName"],
+    "rdnLDAPAttribute": ["cn"],
+    "uuidLDAPAttribute": ["objectGUID"],
+    "userObjectClasses": ["person, organizationalPerson, user"],
+    "searchScope": ["2"],
+    "authType": ["simple"],
+    "useTruststoreSpi": ["ldapsOnly"],
+    "connectionPooling": ["true"],
+    "pagination": ["true"],
+    "importEnabled": ["true"],
+    "syncRegistrations": ["false"],
+    "trustEmail": ["true"]
+  }
+}

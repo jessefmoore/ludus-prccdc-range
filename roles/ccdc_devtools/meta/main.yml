@@ -1,0 +1,29 @@
+---
+galaxy_info:
+  role_name: ccdc_devtools
+  namespace: ccdc
+  author: ccdc
+  description: >-
+    Deploy developer tooling for a CCDC range on a Debian Linux VM via Docker
+    Compose: Gitea (self-hosted Git server, SQLite backend) and JFrog
+    Artifactory OSS (binary artifact repository). Assumes Docker and the
+    `docker compose` plugin are already installed. Creates the stack under
+    /opt/ccdc/devtools, templates a compose file, brings the stack up, and
+    bootstraps an initial Gitea admin user. Idempotent and safe to re-run.
+  license: MIT
+  min_ansible_version: "2.12"
+  platforms:
+    - name: Debian
+      versions:
+        - all
+    - name: Ubuntu
+      versions:
+        - all
+  galaxy_tags:
+    - gitea
+    - artifactory
+    - git
+    - docker
+    - devtools
+    - ccdc
+dependencies: []

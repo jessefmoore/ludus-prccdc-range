@@ -1,0 +1,22 @@
+---
+galaxy_info:
+  role_name: ccdc_ad_accounts
+  namespace: ccdc
+  author: ccdc
+  description: >-
+    Provision the CCDC Active Directory OU structure, service accounts,
+    employee/competition users, and security groups on the primary Domain
+    Controller for domain prccdc.local.
+  license: MIT
+  min_ansible_version: "2.12"
+  platforms:
+    - name: Windows
+      versions:
+        - all
+  galaxy_tags:
+    - activedirectory
+    - windows
+    - ccdc
+    - ldap
+    - accounts
+dependencies: []

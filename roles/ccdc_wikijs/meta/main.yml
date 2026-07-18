@@ -1,0 +1,32 @@
+---
+galaxy_info:
+  role_name: ccdc_wikijs
+  namespace: ccdc
+  author: ccdc
+  description: >-
+    Deploy Wiki.js (documentation wiki) on a Linux VM via Docker Compose using
+    the official ghcr.io/requarks/wiki:2 image with a PostgreSQL 16 backend.
+    Templates a docker-compose stack under /opt/ccdc/wikijs and brings it up.
+    Ships a ready-to-paste Active Directory (LDAP) authentication configuration
+    and a best-effort, non-fatal DB seed so domain (prccdc.local) users can log
+    in with their AD accounts. Intended as a CCDC range target service. Docker
+    and the `docker compose` plugin are assumed to be already installed.
+  license: MIT
+  min_ansible_version: "2.12"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - all
+    - name: Debian
+      versions:
+        - all
+  galaxy_tags:
+    - wikijs
+    - wiki
+    - documentation
+    - docker
+    - postgres
+    - ldap
+    - activedirectory
+    - ccdc
+dependencies: []

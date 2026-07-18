@@ -1,0 +1,43 @@
+# {{ ansible_managed }}
+# Wiki.js + PostgreSQL stack for the CCDC range.
+# Rendered by the ccdc_wikijs Ansible role. Do not edit by hand.
+---
+services:
+  db:
+    image: {{ ccdc_wikijs_db_image }}
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB={{ ccdc_wikijs_db_name }}
+      - POSTGRES_USER={{ ccdc_wikijs_db_user }}
+      - POSTGRES_PASSWORD={{ ccdc_wikijs_db_password }}
+    volumes:
+      - wikijs_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{ ccdc_wikijs_db_user }} -d {{ ccdc_wikijs_db_name }}"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  wiki:
+    image: {{ ccdc_wikijs_image }}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DB_TYPE=postgres
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER={{ ccdc_wikijs_db_user }}
+      - DB_PASS={{ ccdc_wikijs_db_password }}
+      - DB_NAME={{ ccdc_wikijs_db_name }}
+    ports:
+      # Wiki.js serves HTTP on container port 3000.
+      # Host {{ ccdc_wikijs_port }} is the primary published port; 3000 is also
+      # published for convenience / direct access.
+      - "{{ ccdc_wikijs_port }}:3000"
+      - "3000:3000"
+
+volumes:
+  wikijs_db:
+    driver: local

@@ -1,0 +1,23 @@
+---
+galaxy_info:
+  role_name: ccdc_pii
+  namespace: ccdc
+  author: ccdc
+  description: >
+    Plants realistic-looking but CLEARLY FAKE (synthetic) PII files on a Windows
+    10/11 desktop VM so blue teams have sensitive target data to find and protect
+    during a CCDC. All data is synthetic test data (public test card PANs,
+    invalid-range SSNs, fake addresses/accounts).
+  license: MIT
+  min_ansible_version: "2.12"
+  platforms:
+    - name: Windows
+      versions:
+        - all
+  galaxy_tags:
+    - ccdc
+    - pii
+    - windows
+    - blueteam
+    - dataloss
+dependencies: []

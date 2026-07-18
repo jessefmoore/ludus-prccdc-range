@@ -1,0 +1,12 @@
+---
+- name: Restart systemd-resolved
+  ansible.builtin.systemd:
+    name: systemd-resolved
+    state: restarted
+  when: ccdc_ldj_resolved_active | default(false)
+
+- name: Restart sssd
+  ansible.builtin.service:
+    name: sssd
+    state: restarted
+    enabled: true

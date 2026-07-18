@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Idempotently wire Keycloak -> Active Directory (prccdc.local) user federation.
+# Runs kcadm.sh INSIDE the keycloak container (localhost is exempt from the
+# "HTTPS required" SSL policy). Safe to re-run.
+set -euo pipefail
+cd "{{ ccdc_sso_stack_dir }}"
+
+KC=(docker compose exec -T keycloak /opt/keycloak/bin/kcadm.sh)
+REALM="{{ ccdc_sso_realm }}"
+
+# 1) Authenticate kcadm (retry until Keycloak is ready).
+for i in $(seq 1 30); do
+  if "${KC[@]}" config credentials --server http://localhost:8080 \
+       --realm master --user "{{ ccdc_sso_keycloak_admin }}" \
+       --password "{{ ccdc_sso_keycloak_admin_password }}" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 5
+done
+
+# 2) Relax SSL for the lab so admin/API works over the range VPN (non-RFC1918 WG IPs).
+"${KC[@]}" update realms/master -s sslRequired=NONE >/dev/null 2>&1 || true
+
+# 3) Ensure the target realm exists (with SSL relaxed).
+if ! "${KC[@]}" get "realms/${REALM}" >/dev/null 2>&1; then
+  "${KC[@]}" create realms -s realm="${REALM}" -s enabled=true \
+    -s displayName="PRccdc SSO" -s sslRequired=NONE
+  echo "CHANGED: created realm ${REALM}"
+else
+  "${KC[@]}" update "realms/${REALM}" -s sslRequired=NONE >/dev/null 2>&1 || true
+fi
+
+# 4) Ensure the AD LDAP federation provider exists.
+if ! "${KC[@]}" get components -r "${REALM}" \
+       -q type=org.keycloak.storage.UserStorageProvider \
+       --format csv --fields name --noquotes 2>/dev/null | grep -qx "ad-ldap"; then
+  docker compose cp "{{ ccdc_sso_stack_dir }}/keycloak-ad-ldap.json" keycloak:/tmp/ad-ldap.json
+  "${KC[@]}" create components -r "${REALM}" -f /tmp/ad-ldap.json
+  echo "CHANGED: created ad-ldap federation"
+fi
+
+# 5) Trigger a full user sync from AD.
+CID="$("${KC[@]}" get components -r "${REALM}" \
+        -q type=org.keycloak.storage.UserStorageProvider \
+        --format csv --fields id,name --noquotes 2>/dev/null \
+        | awk -F, '$2=="ad-ldap"{print $1}')"
+if [ -n "${CID}" ]; then
+  "${KC[@]}" create "user-storage/${CID}/sync" -r "${REALM}" -q action=triggerFullSync || true
+  echo "SYNC: triggered full AD sync for ad-ldap (${CID})"
+fi

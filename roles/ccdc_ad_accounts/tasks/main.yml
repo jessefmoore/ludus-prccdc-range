@@ -1,0 +1,120 @@
+---
+# =============================================================================
+# ccdc_ad_accounts - provision CCDC AD OUs, accounts, and groups
+# =============================================================================
+# Runs on the PRIMARY Active Directory Domain Controller for prccdc.local.
+# All microsoft.ad modules are idempotent (state: present) so this is safe to
+# re-run. Fully-qualified module names are used throughout.
+
+- name: Assert this host is a domain controller
+  ansible.windows.win_powershell:
+    script: |
+      $ErrorActionPreference = 'Stop'
+      # ProductType 2 == Domain Controller
+      $role = (Get-CimInstance Win32_OperatingSystem).ProductType
+      if ($role -ne 2) {
+        throw "ccdc_ad_accounts must run on a Domain Controller (ProductType=$role)"
+      }
+      $Ansible.Changed = $false
+  changed_when: false
+
+# ----------------------------------------------------------------------------
+# Organizational Units
+# ----------------------------------------------------------------------------
+- name: Ensure root CCDC OU exists
+  microsoft.ad.ou:
+    name: "{{ ccdc_ad_accounts_root_ou_name }}"
+    path: "{{ ccdc_ad_accounts_domain_base_dn }}"
+    state: present
+    description: "Root OU for all CCDC competition objects"
+
+- name: Ensure CCDC sub-OUs exist
+  microsoft.ad.ou:
+    name: "{{ item.name }}"
+    path: "{{ ccdc_ad_accounts_root_ou_dn }}"
+    state: present
+    description: "{{ item.description }}"
+  loop:
+    - { name: "{{ ccdc_ad_accounts_service_ou_name }}", description: "CCDC service accounts" }
+    - { name: "{{ ccdc_ad_accounts_employees_ou_name }}", description: "CCDC employee / competition users" }
+    - { name: "{{ ccdc_ad_accounts_groups_ou_name }}", description: "CCDC security groups" }
+  loop_control:
+    label: "{{ item.name }}"
+
+# ----------------------------------------------------------------------------
+# Service accounts
+# ----------------------------------------------------------------------------
+- name: Ensure service accounts exist in the ServiceAccounts OU
+  microsoft.ad.user:
+    name: "{{ item }}"
+    sam_account_name: "{{ item }}"
+    path: "{{ ccdc_ad_accounts_service_ou_dn }}"
+    upn: "{{ item }}@{{ ccdc_ad_accounts_domain_base_dn | regex_replace('^dc=', '') | regex_replace(',dc=', '.') }}"
+    # Populate the mail attribute — web apps (Wiki.js etc.) require an email in
+    # the LDAP profile to provision/authenticate the account.
+    email: "{{ item }}@{{ ccdc_ad_accounts_domain_base_dn | regex_replace('^dc=', '') | regex_replace(',dc=', '.') }}"
+    password: >-
+      {{ ccdc_ad_accounts_service_passwords[item]
+         | default(ccdc_ad_accounts_default_password, true) }}
+    password_never_expires: true
+    user_cannot_change_password: true
+    enabled: true
+    description: "CCDC service account for {{ item }}"
+    # Do not force a password change on first logon for service accounts.
+    update_password: on_create
+    state: present
+  loop: "{{ ccdc_ad_accounts_service_accounts }}"
+  loop_control:
+    label: "{{ item }}"
+  no_log: true
+
+# ----------------------------------------------------------------------------
+# Employee / competition users
+# ----------------------------------------------------------------------------
+- name: Ensure employee users exist in the Employees OU
+  microsoft.ad.user:
+    name: "{{ item.name }}"
+    sam_account_name: "{{ item.sam }}"
+    path: "{{ ccdc_ad_accounts_employees_ou_dn }}"
+    upn: "{{ item.sam }}@{{ ccdc_ad_accounts_domain_base_dn | regex_replace('^dc=', '') | regex_replace(',dc=', '.') }}"
+    firstname: "{{ item.name.split(' ')[0] }}"
+    surname: "{{ item.name.split(' ')[1:] | join(' ') }}"
+    display_name: "{{ item.name }}"
+    # Populate the mail attribute — Wiki.js (and other LDAP web apps) reject a
+    # login when the AD profile has no email address.
+    email: "{{ item.sam }}@{{ ccdc_ad_accounts_domain_base_dn | regex_replace('^dc=', '') | regex_replace(',dc=', '.') }}"
+    password: "{{ item.password | default(ccdc_ad_accounts_employee_password, true) }}"
+    password_never_expires: true
+    enabled: true
+    description: "CCDC employee user"
+    update_password: on_create
+    state: present
+  loop: "{{ ccdc_ad_accounts_employees }}"
+  loop_control:
+    label: "{{ item.sam }}"
+  no_log: true
+
+# ----------------------------------------------------------------------------
+# Security groups + membership
+# ----------------------------------------------------------------------------
+- name: Ensure CCDC-WebApps security group exists with service accounts as members
+  microsoft.ad.group:
+    name: "{{ ccdc_ad_accounts_webapps_group_name }}"
+    path: "{{ ccdc_ad_accounts_groups_ou_dn }}"
+    scope: global
+    category: security
+    description: "Service accounts backing CCDC web applications"
+    members:
+      set: "{{ ccdc_ad_accounts_service_accounts }}"
+    state: present
+
+- name: Ensure CCDC-Employees security group exists with employee users as members
+  microsoft.ad.group:
+    name: "{{ ccdc_ad_accounts_employees_group_name }}"
+    path: "{{ ccdc_ad_accounts_groups_ou_dn }}"
+    scope: global
+    category: security
+    description: "CCDC employees permitted to log into the Wiki and other apps"
+    members:
+      set: "{{ ccdc_ad_accounts_employees | map(attribute='sam') | list }}"
+    state: present

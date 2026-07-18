@@ -1,0 +1,115 @@
+---
+# =============================================================================
+# ccdc_sso - deploy Keycloak (+ PostgreSQL) and two demo JSON APIs via Docker
+# Compose. Docker and the `docker compose` plugin are assumed already present
+# (geerlingguy.docker runs before this role). We never install Docker here and
+# never use the community.docker collection.
+# =============================================================================
+
+- name: Ensure the SSO stack directory tree exists
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ ccdc_sso_stack_dir }}"
+    - "{{ ccdc_sso_stack_dir }}/waitapi"
+    - "{{ ccdc_sso_stack_dir }}/rideapi"
+
+- name: Template the docker-compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ ccdc_sso_stack_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  register: ccdc_sso_compose_file
+
+- name: Template the waitAPI JSON payload
+  ansible.builtin.template:
+    src: waitapi-index.json.j2
+    dest: "{{ ccdc_sso_stack_dir }}/waitapi/index.json"
+    owner: root
+    group: root
+    mode: "0644"
+  register: ccdc_sso_waitapi_json
+
+- name: Template the RideAPI JSON payload
+  ansible.builtin.template:
+    src: rideapi-index.json.j2
+    dest: "{{ ccdc_sso_stack_dir }}/rideapi/index.json"
+    owner: root
+    group: root
+    mode: "0644"
+  register: ccdc_sso_rideapi_json
+
+- name: Template the nginx default.conf for the waitAPI container
+  ansible.builtin.template:
+    src: api-nginx.conf.j2
+    dest: "{{ ccdc_sso_stack_dir }}/waitapi/default.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  register: ccdc_sso_waitapi_conf
+
+- name: Template the nginx default.conf for the RideAPI container
+  ansible.builtin.template:
+    src: api-nginx.conf.j2
+    dest: "{{ ccdc_sso_stack_dir }}/rideapi/default.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  register: ccdc_sso_rideapi_conf
+
+- name: Copy the optional Keycloak realm-import reference
+  ansible.builtin.copy:
+    src: keycloak-realm-import.json
+    dest: "{{ ccdc_sso_stack_dir }}/keycloak-realm-import.json"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Bring up the SSO stack (docker compose up -d)
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ ccdc_sso_stack_dir }}"
+  register: ccdc_sso_compose_up
+  changed_when: >-
+    ('Started' in ccdc_sso_compose_up.stderr)
+    or ('Created' in ccdc_sso_compose_up.stderr)
+    or ('Recreated' in ccdc_sso_compose_up.stderr)
+    or ('Recreate' in ccdc_sso_compose_up.stderr)
+
+# ---------------------------------------------------------------------------
+# Wire Keycloak -> Active Directory (prccdc.local) user federation (idempotent)
+# ---------------------------------------------------------------------------
+- name: Render the AD LDAP federation component definition
+  ansible.builtin.template:
+    src: keycloak-ad-ldap.json.j2
+    dest: "{{ ccdc_sso_stack_dir }}/keycloak-ad-ldap.json"
+    owner: root
+    group: root
+    mode: "0640"
+  when: ccdc_sso_ad_ldap_enabled | bool
+
+- name: Render the Keycloak federation bootstrap script
+  ansible.builtin.template:
+    src: kc-federate.sh.j2
+    dest: "{{ ccdc_sso_stack_dir }}/kc-federate.sh"
+    owner: root
+    group: root
+    mode: "0750"
+  when: ccdc_sso_ad_ldap_enabled | bool
+
+- name: Configure Keycloak AD federation (create realm + ad-ldap provider + sync)
+  ansible.builtin.command:
+    cmd: bash "{{ ccdc_sso_stack_dir }}/kc-federate.sh"
+    chdir: "{{ ccdc_sso_stack_dir }}"
+  register: ccdc_sso_federate
+  changed_when: "'CHANGED:' in ccdc_sso_federate.stdout"
+  # Non-fatal: Keycloak/AD may still be warming up on the very first deploy;
+  # a re-run (or the next deploy) completes it. Never blocks the range.
+  failed_when: false
+  when: ccdc_sso_ad_ldap_enabled | bool

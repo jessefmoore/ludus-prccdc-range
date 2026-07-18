@@ -1,0 +1,28 @@
+---
+galaxy_info:
+  role_name: ccdc_magento
+  namespace: ccdc
+  author: ccdc
+  description: >-
+    Deploy Magento (e-commerce) on a Linux VM via Docker Compose using the
+    Bitnami all-in-one stack (bitnami/magento + bitnami/mariadb +
+    bitnami/opensearch). Templates a docker-compose file under
+    /opt/ccdc/magento, sets vm.max_map_count for OpenSearch, and brings the
+    stack up. Intended as a CCDC range target service.
+  license: MIT
+  min_ansible_version: "2.12"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - all
+    - name: Debian
+      versions:
+        - all
+  galaxy_tags:
+    - magento
+    - ecommerce
+    - docker
+    - opensearch
+    - mariadb
+    - ccdc
+dependencies: []

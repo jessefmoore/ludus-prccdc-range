@@ -1,0 +1,27 @@
+---
+galaxy_info:
+  role_name: ccdc_sso
+  namespace: ccdc
+  author: ccdc
+  description: >-
+    Deploy a Keycloak (SSO / identity) service plus two demo backend APIs
+    ("waitAPI" and "RideAPI", simulating an amusement-park ride-wait-time and
+    ride-catalog service) on a Linux VM via Docker Compose. Keycloak is backed
+    by PostgreSQL; the two APIs are nginx:alpine containers serving static JSON.
+    Templates a docker-compose stack under /opt/ccdc/sso and brings it up.
+    Intended as a CCDC range target service, optionally federated to AD/LDAP.
+  license: MIT
+  min_ansible_version: "2.12"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - all
+  galaxy_tags:
+    - keycloak
+    - sso
+    - identity
+    - api
+    - docker
+    - postgres
+    - ccdc
+dependencies: []

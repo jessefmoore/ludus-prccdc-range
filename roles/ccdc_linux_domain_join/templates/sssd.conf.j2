@@ -1,0 +1,23 @@
+{{ ansible_managed | comment }}
+# Managed by ccdc_linux_domain_join. Do not edit by hand; changes are overwritten.
+[sssd]
+domains = {{ ccdc_domain }}
+config_file_version = 2
+services = nss, pam, ssh, sudo
+
+[domain/{{ ccdc_domain }}]
+default_shell = /bin/bash
+krb5_store_password_if_offline = True
+cache_credentials = True
+krb5_realm = {{ ccdc_domain_upper }}
+realmd_tags = manages-system joined-with-adcli
+id_provider = ad
+fallback_homedir = /home/%u
+ad_domain = {{ ccdc_domain }}
+use_fully_qualified_names = False
+ldap_id_mapping = True
+access_provider = ad
+ad_gpo_access_control = permissive
+
+# Enable sudo rules delivered via SSSD (libsss-sudo).
+sudo_provider = ad

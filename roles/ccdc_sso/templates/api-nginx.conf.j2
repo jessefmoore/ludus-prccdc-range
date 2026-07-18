@@ -1,0 +1,22 @@
+# {{ ansible_managed }}
+# nginx default server for the ccdc_sso demo JSON APIs.
+# Serves the mounted /usr/share/nginx/html/index.json as application/json.
+server {
+    listen 80 default_server;
+    server_name _;
+
+    root /usr/share/nginx/html;
+
+    # Return the static JSON payload as application/json for any path.
+    location / {
+        default_type application/json;
+        add_header Content-Type "application/json" always;
+        try_files /index.json =404;
+    }
+
+    # Lightweight health endpoint.
+    location = /healthz {
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+}

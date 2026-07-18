@@ -1,0 +1,46 @@
+-- {{ ansible_managed }}
+-- Best-effort seed of the Wiki.js Active Directory (LDAP) authentication
+-- strategy. Rendered by the ccdc_wikijs role and piped into the Postgres
+-- container. This ONLY works if Wiki.js has already created its schema (i.e.
+-- the first-run setup wizard has been completed and the `authentication`
+-- table exists). The role runs this non-fatally; if it does not apply, use
+-- files/ldap-config.md to configure LDAP in the Wiki.js admin UI instead.
+--
+-- Wiki.js stores each auth strategy as a row in the `authentication` table:
+--   config           = flat JSON of the strategy's props
+--   domainWhitelist  = {"v": [...]}   (array wrapped in a "v" key)
+--   autoEnrollGroups = {"v": [...]}   (array wrapped in a "v" key)
+{% set proto = 'ldaps' if ccdc_wikijs_ldap_tls else 'ldap' %}
+{% set url = proto ~ '://' ~ ccdc_wikijs_ldap_host ~ ':' ~ (ccdc_wikijs_ldap_port | string) %}
+INSERT INTO authentication
+  (key, "isEnabled", "strategyKey", "displayName", "order",
+   config, "selfRegistration", "domainWhitelist", "autoEnrollGroups")
+VALUES
+  ('ldap',
+   TRUE,
+   'ldap',
+   '{{ ccdc_wikijs_ldap_display_name }}',
+   1,
+   '{
+      "url": "{{ url }}",
+      "bindDn": "{{ ccdc_wikijs_ldap_bind_dn }}",
+      "bindCredentials": "{{ ccdc_wikijs_ldap_bind_password }}",
+      "searchBase": "{{ ccdc_wikijs_ldap_search_base }}",
+      "searchFilter": "{{ ccdc_wikijs_ldap_user_filter }}",
+      "tlsEnabled": {{ ccdc_wikijs_ldap_tls | ternary('true', 'false') }},
+      "tlsCertPath": "",
+      "allowSelfSignedCert": {{ ccdc_wikijs_ldap_allow_self_signed | ternary('true', 'false') }},
+      "mappingUID": "{{ ccdc_wikijs_ldap_mapping_uid }}",
+      "mappingEmail": "{{ ccdc_wikijs_ldap_mapping_email }}",
+      "mappingDisplayName": "{{ ccdc_wikijs_ldap_mapping_display_name }}",
+      "mappingPicture": "{{ ccdc_wikijs_ldap_mapping_picture }}"
+    }'::json,
+   {{ ccdc_wikijs_ldap_self_registration | ternary('TRUE', 'FALSE') }},
+   '{"v": []}'::json,
+   '{"v": []}'::json)
+ON CONFLICT (key) DO UPDATE SET
+  "isEnabled"        = EXCLUDED."isEnabled",
+  "strategyKey"      = EXCLUDED."strategyKey",
+  "displayName"      = EXCLUDED."displayName",
+  config             = EXCLUDED.config,
+  "selfRegistration" = EXCLUDED."selfRegistration";

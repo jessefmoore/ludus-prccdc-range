@@ -1,0 +1,16 @@
+#jinja2: trim_blocks:True, lstrip_blocks:True
+# {{ ccdc_pii_header }}
+name,card_number,exp,cvv,type
+{% for i in range(ccdc_pii_customer_cards_rows) %}
+{% set card = ccdc_pii_test_cards[i % (ccdc_pii_test_cards | length)] %}
+{% set fn = ccdc_pii_first_names | random(seed='cc_fn' ~ i) %}
+{% set ln = ccdc_pii_last_names | random(seed='cc_ln' ~ i) %}
+{% set mm = '%02d' | format((12 | random(seed='cc_mm' ~ i)) + 1) %}
+{% set yy = (5 | random(seed='cc_yy' ~ i)) + 26 %}
+{% if card.type == 'Amex' %}
+{% set cvv = (8999 | random(seed='cc_cv' ~ i)) + 1000 %}
+{% else %}
+{% set cvv = (899 | random(seed='cc_cv' ~ i)) + 100 %}
+{% endif %}
+{{ fn }} {{ ln }},{{ card.pan }},{{ mm }}/{{ yy }},{{ cvv }},{{ card.type }}
+{% endfor %}

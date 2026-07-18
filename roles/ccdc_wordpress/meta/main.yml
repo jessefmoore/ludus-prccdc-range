@@ -1,0 +1,24 @@
+---
+galaxy_info:
+  role_name: ccdc_wordpress
+  namespace: ccdc
+  author: ccdc
+  description: >-
+    Install WordPress on a Windows Server 2022 VM using a XAMPP
+    (Apache + PHP + MariaDB) stack deployed via Chocolatey. Registers Apache and
+    MariaDB as Windows services, creates the WordPress database and user, drops
+    in a templated wp-config.php, and opens the firewall for HTTP.
+  license: MIT
+  min_ansible_version: "2.12"
+  platforms:
+    - name: Windows
+      versions:
+        - all
+  galaxy_tags:
+    - wordpress
+    - windows
+    - xampp
+    - apache
+    - mariadb
+    - ccdc
+dependencies: []

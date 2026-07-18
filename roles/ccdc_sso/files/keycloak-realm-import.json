@@ -1,0 +1,41 @@
+{
+  "_README": "OPTIONAL / REFERENCE ONLY. This is a Keycloak realm-import document that wires an LDAP user-federation provider pointing at the CCDC Active Directory domain (prccdc.local) via the svc_ldap bind account. It is NOT applied automatically by the ccdc_sso role and does not need to succeed at deploy. To use it, either import it from the Keycloak admin console (Realm settings > Partial import) or restart Keycloak with the arg '--import-realm' and this file placed in /opt/keycloak/data/import. Replace BIND_PASSWORD_HERE and adjust the connectionUrl / DNs to match your range before importing.",
+  "_NOTES": [
+    "Standard JSON has no comment syntax; the human notes live in these _README/_NOTES fields, which Keycloak ignores on import.",
+    "editMode READ_ONLY keeps Keycloak from writing back to AD - safest for a lab. Use WRITABLE only if you want Keycloak to manage AD accounts.",
+    "vendor 'ad' selects Active-Directory-specific defaults (objectGUID as UUID, sAMAccountName as username, memberOf group handling).",
+    "connectionUrl uses the DC by hostname; prefer dc01.prccdc.local (or ldaps://... on 636 with a trusted cert) over a hard-coded IP.",
+    "bindDn svc_ldap is created on the DC by the ccdc_ad_accounts role; supply its password out-of-band, do not commit it."
+  ],
+  "realm": "ccdc",
+  "enabled": true,
+  "displayName": "PRccdc SSO",
+  "components": {
+    "org.keycloak.storage.UserStorageProvider": [
+      {
+        "name": "ad-ldap",
+        "providerId": "ldap",
+        "config": {
+          "enabled": ["true"],
+          "priority": ["0"],
+          "editMode": ["READ_ONLY"],
+          "vendor": ["ad"],
+          "connectionUrl": ["ldap://dc01.prccdc.local:389"],
+          "usersDn": ["cn=Users,dc=prccdc,dc=local"],
+          "bindDn": ["cn=svc_ldap,cn=Users,dc=prccdc,dc=local"],
+          "bindCredential": ["BIND_PASSWORD_HERE"],
+          "usernameLDAPAttribute": ["sAMAccountName"],
+          "rdnLDAPAttribute": ["cn"],
+          "uuidLDAPAttribute": ["objectGUID"],
+          "userObjectClasses": ["person, organizationalPerson, user"],
+          "searchScope": ["2"],
+          "useTruststoreSpi": ["ldapsOnly"],
+          "connectionPooling": ["true"],
+          "pagination": ["true"],
+          "importEnabled": ["true"],
+          "syncRegistrations": ["false"]
+        }
+      }
+    ]
+  }
+}

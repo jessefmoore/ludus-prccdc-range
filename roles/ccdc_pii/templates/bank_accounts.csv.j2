@@ -1,0 +1,11 @@
+#jinja2: trim_blocks:True, lstrip_blocks:True
+# {{ ccdc_pii_header }}
+name,routing,account,bank
+{% for i in range(ccdc_pii_bank_accounts_rows) %}
+{% set fn = ccdc_pii_first_names | random(seed='bk_fn' ~ i) %}
+{% set ln = ccdc_pii_last_names | random(seed='bk_ln' ~ i) %}
+{% set routing = '0000%05d' | format(99999 | random(seed='bk_rt' ~ i)) %}
+{% set account = '%010d' | format((8999999999 | random(seed='bk_ac' ~ i)) + 1000000000) %}
+{% set bank = ccdc_pii_banks | random(seed='bk_bn' ~ i) %}
+{{ fn }} {{ ln }},{{ routing }},{{ account }},{{ bank }}
+{% endfor %}

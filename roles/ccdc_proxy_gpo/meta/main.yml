@@ -1,0 +1,12 @@
+---
+galaxy_info:
+  role_name: ccdc_proxy_gpo
+  namespace: ccdc
+  author: PRCCDC range
+  description: Create/link a GPO that points domain users at the CCDC Squid proxy.
+  company: PRCCDC
+  license: MIT
+  min_ansible_version: "2.12"
+  platforms:
+    - name: Windows
+dependencies: []

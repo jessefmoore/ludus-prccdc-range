@@ -1,0 +1,95 @@
+---
+# =============================================================================
+# ccdc_ad_accounts - default variables
+# =============================================================================
+# All variables are namespaced with the role name (ccdc_ad_accounts_) because
+# Ludus passes role_vars to every role on a VM. Override any of these via
+# role_vars in your Ludus range config.
+
+# ----------------------------------------------------------------------------
+# Domain / directory layout
+# ----------------------------------------------------------------------------
+# Base distinguished name of the domain. For prccdc.local this is
+# dc=prccdc,dc=local. Change only if the domain name changes.
+ccdc_ad_accounts_domain_base_dn: "dc=prccdc,dc=local"
+
+# Name of the root organizational unit that contains all CCDC objects.
+ccdc_ad_accounts_root_ou_name: "CCDC"
+
+# Sub-OU names created underneath the root OU.
+ccdc_ad_accounts_service_ou_name: "ServiceAccounts"
+ccdc_ad_accounts_employees_ou_name: "Employees"
+ccdc_ad_accounts_groups_ou_name: "Groups"
+
+# Derived DNs for the OUs (computed from the names/base above). These are the
+# paths the user/group objects are placed into.
+ccdc_ad_accounts_root_ou_dn: "OU={{ ccdc_ad_accounts_root_ou_name }},{{ ccdc_ad_accounts_domain_base_dn }}"
+ccdc_ad_accounts_service_ou_dn: "OU={{ ccdc_ad_accounts_service_ou_name }},{{ ccdc_ad_accounts_root_ou_dn }}"
+ccdc_ad_accounts_employees_ou_dn: "OU={{ ccdc_ad_accounts_employees_ou_name }},{{ ccdc_ad_accounts_root_ou_dn }}"
+ccdc_ad_accounts_groups_ou_dn: "OU={{ ccdc_ad_accounts_groups_ou_name }},{{ ccdc_ad_accounts_root_ou_dn }}"
+
+# ----------------------------------------------------------------------------
+# Passwords
+# ----------------------------------------------------------------------------
+# Fallback password used for any service account not given an explicit entry in
+# ccdc_ad_accounts_service_passwords below. OVERRIDE THIS for real deployments.
+ccdc_ad_accounts_default_password: "PRccdc-Svc-2026!"
+
+# Common password applied to every employee/competition user account.
+ccdc_ad_accounts_employee_password: "PRccdc-User-2026!"
+
+# Per-service-account password map. Any account whose sAMAccountName is not a
+# key here falls back to ccdc_ad_accounts_default_password. Fill in real,
+# distinct passwords per service for a hardened deployment.
+ccdc_ad_accounts_service_passwords:
+  svc_wiki: "{{ ccdc_ad_accounts_default_password }}"
+  svc_wordpress: "{{ ccdc_ad_accounts_default_password }}"
+  svc_magento: "{{ ccdc_ad_accounts_default_password }}"
+  svc_gitea: "{{ ccdc_ad_accounts_default_password }}"
+  svc_mysql: "{{ ccdc_ad_accounts_default_password }}"
+  svc_minio: "{{ ccdc_ad_accounts_default_password }}"
+  svc_keycloak: "{{ ccdc_ad_accounts_default_password }}"
+  svc_wazuh: "{{ ccdc_ad_accounts_default_password }}"
+  svc_ldap: "{{ ccdc_ad_accounts_default_password }}"
+
+# ----------------------------------------------------------------------------
+# Service accounts
+# ----------------------------------------------------------------------------
+# List of service-account sAMAccountNames to create in the ServiceAccounts OU.
+# svc_ldap is the LDAP bind account consumed by Wiki.js and must remain a
+# normal, enabled user that can read the directory.
+ccdc_ad_accounts_service_accounts:
+  - svc_wiki
+  - svc_wordpress
+  - svc_magento
+  - svc_gitea
+  - svc_mysql
+  - svc_minio
+  - svc_keycloak
+  - svc_wazuh
+  - svc_ldap
+
+# Security group that all service accounts are added to.
+ccdc_ad_accounts_webapps_group_name: "CCDC-WebApps"
+
+# ----------------------------------------------------------------------------
+# Employee / competition users
+# ----------------------------------------------------------------------------
+# Security group that all employee users are added to.
+ccdc_ad_accounts_employees_group_name: "CCDC-Employees"
+
+# ~10 sample employee accounts with realistic fake names. Each dict supports:
+#   name     - full display name / CN
+#   sam      - sAMAccountName (login)
+#   password - optional; falls back to ccdc_ad_accounts_employee_password
+ccdc_ad_accounts_employees:
+  - { name: "Alice Thompson", sam: "athompson" }
+  - { name: "Brian Carter", sam: "bcarter" }
+  - { name: "Carla Nguyen", sam: "cnguyen" }
+  - { name: "David Ramirez", sam: "dramirez" }
+  - { name: "Emily Foster", sam: "efoster" }
+  - { name: "Frank Delgado", sam: "fdelgado" }
+  - { name: "Grace Okafor", sam: "gokafor" }
+  - { name: "Henry Walsh", sam: "hwalsh" }
+  - { name: "Isabel Moreno", sam: "imoreno" }
+  - { name: "Jason Kim", sam: "jkim" }

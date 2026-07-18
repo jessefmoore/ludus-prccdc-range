@@ -1,0 +1,50 @@
+<?php
+{# Managed by Ansible role ccdc_wordpress. Do not edit by hand; changes are
+   overwritten on the next role run. The AUTH keys/salts below are STATIC lab
+   placeholders (acceptable for a CCDC range, not secret). Do NOT use a leading
+   dash on this comment: `{#-` trims the newline after <?php, producing
+   `<?php/**`, and PHP then treats the whole file as plain text (WordPress fails
+   to load with "undefined function" errors). Keep a newline after <?php. #}
+/**
+ * WordPress base configuration - templated by Ansible (ccdc_wordpress role).
+ */
+
+// ** Database settings ** //
+define( 'DB_NAME', '{{ ccdc_wordpress_db_name }}' );
+define( 'DB_USER', '{{ ccdc_wordpress_db_user }}' );
+define( 'DB_PASSWORD', '{{ ccdc_wordpress_db_password }}' );
+define( 'DB_HOST', '{{ ccdc_wordpress_db_host }}' );
+define( 'DB_CHARSET', 'utf8mb4' );
+define( 'DB_COLLATE', '' );
+
+/**#@+
+ * Authentication unique keys and salts.
+ * STATIC LAB PLACEHOLDERS - see note above. Replace for production use.
+ */
+define( 'AUTH_KEY',         'pR#Ccdc-Auth-K3y!2026__q7Zx9wLmN4vT8pB1sD6fH0jY' );
+define( 'SECURE_AUTH_KEY',  's3cur3-Auth-K3y!2026__a2Cd5eF8gH1jK4lM7nP0qR3s' );
+define( 'LOGGED_IN_KEY',    'l0gg3d-1n-K3y!2026____b4Df7hJ0kL3mN6pQ9rS2tU5vW' );
+define( 'NONCE_KEY',        'n0nc3-K3y-Ccdc!2026___c6Eg9iK2mO5qS8uW1yA4cE7gI' );
+define( 'AUTH_SALT',        'aUth-S4lt-Ccdc!2026___d8Fh0jL3nP6rT9vX2zB5dF8hJ' );
+define( 'SECURE_AUTH_SALT', 'sEcur3-S4lt!2026______e0Gi2kM5oQ8sU1wY4aC7eG0iK' );
+define( 'LOGGED_IN_SALT',   'l0gg3d-S4lt!2026______f2Hj4lN7pR0tV3xZ6bD9fH2jL' );
+define( 'NONCE_SALT',       'n0nc3-S4lt-Ccdc!2026__g4Ik6mP9rT2vX5zB8dF1hJ4lN' );
+/**#@-*/
+
+/**
+ * WordPress database table prefix.
+ */
+$table_prefix = '{{ ccdc_wordpress_table_prefix }}';
+
+/**
+ * For developers: WordPress debugging mode.
+ */
+define( 'WP_DEBUG', false );
+
+/* Absolute path to the WordPress directory. */
+if ( ! defined( 'ABSPATH' ) ) {
+	define( 'ABSPATH', __DIR__ . '/' );
+}
+
+/** Sets up WordPress vars and included files. */
+require_once ABSPATH . 'wp-settings.php';

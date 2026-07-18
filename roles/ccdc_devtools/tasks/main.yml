@@ -1,0 +1,131 @@
+---
+# ------------------------------------------------------------------------------
+# ccdc_devtools — deploy Gitea + Artifactory OSS via Docker Compose.
+# Assumes Docker + the `docker compose` plugin are already installed
+# (geerlingguy.docker runs before this role). We do NOT install Docker here and
+# we do NOT use community.docker.
+# ------------------------------------------------------------------------------
+
+- name: Ensure the devtools stack directory exists
+  ansible.builtin.file:
+    path: "{{ ccdc_devtools_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Template the docker-compose stack
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ ccdc_devtools_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  register: ccdc_devtools_compose
+
+- name: Bring the devtools stack up (docker compose up -d)
+  ansible.builtin.command:
+    cmd: docker compose up -d --remove-orphans
+    chdir: "{{ ccdc_devtools_dir }}"
+  register: ccdc_devtools_compose_up
+  # Only report "changed" when compose actually created/recreated/started
+  # something; a no-op `up -d` prints nothing meaningful to stdout.
+  changed_when: >-
+    ('Creating' in ccdc_devtools_compose_up.stderr)
+    or ('Started' in ccdc_devtools_compose_up.stderr)
+    or ('Recreate' in ccdc_devtools_compose_up.stderr)
+    or ccdc_devtools_compose.changed
+
+# --- Bootstrap the Gitea admin user (idempotent) ------------------------------
+
+- name: Wait for Gitea to answer on its web port
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ ccdc_devtools_gitea_port }}"
+    state: started
+    timeout: 120
+
+- name: Check whether the Gitea admin user already exists
+  ansible.builtin.command:
+    cmd: >-
+      docker exec -u git ccdc_gitea gitea admin user list
+  register: ccdc_devtools_gitea_users
+  changed_when: false
+  # Gitea may still be finishing startup; retry until the CLI responds.
+  retries: 10
+  delay: 6
+  until: ccdc_devtools_gitea_users.rc == 0
+
+- name: Create the initial Gitea admin user
+  ansible.builtin.command:
+    cmd: >-
+      docker exec -u git ccdc_gitea gitea admin user create
+      --username {{ ccdc_devtools_gitea_admin_user | quote }}
+      --password {{ ccdc_devtools_gitea_admin_password | quote }}
+      --email {{ ccdc_devtools_gitea_admin_email | quote }}
+      --admin --must-change-password=false
+  register: ccdc_devtools_gitea_create
+  when: ccdc_devtools_gitea_admin_user not in ccdc_devtools_gitea_users.stdout
+  changed_when: ccdc_devtools_gitea_create.rc == 0
+  # Belt-and-suspenders: if a race recreated the user, don't fail the play.
+  failed_when: >-
+    ccdc_devtools_gitea_create.rc != 0
+    and ('user already exists' not in ccdc_devtools_gitea_create.stderr)
+  no_log: true
+
+# --- Wire Gitea to Active Directory / LDAP (idempotent) -----------------------
+# So AD users in prccdc.local can log into Gitea with their domain accounts.
+# Gitea supports LDAP (via BindDN) natively; we configure it through the admin
+# CLI inside the container. Run as the `git` user (Gitea runs as git in-container).
+
+- name: List existing Gitea auth sources
+  ansible.builtin.command:
+    cmd: >-
+      docker exec -u git ccdc_gitea gitea admin auth list
+  register: ccdc_devtools_gitea_auth
+  changed_when: false
+
+- name: Add the Active Directory / LDAP (BindDN) auth source
+  ansible.builtin.command:
+    cmd: >-
+      docker exec -u git ccdc_gitea gitea admin auth add-ldap
+      --name {{ ccdc_devtools_ldap_source_name | quote }}
+      --security-protocol unencrypted
+      --host {{ ccdc_devtools_ldap_host | quote }}
+      --port {{ ccdc_devtools_ldap_port | quote }}
+      --bind-dn {{ ccdc_devtools_ldap_bind_dn | quote }}
+      --bind-password {{ ccdc_devtools_ldap_bind_password | quote }}
+      --user-search-base {{ ccdc_devtools_ldap_base_dn | quote }}
+      --user-filter {{ '(&(objectClass=user)(sAMAccountName=%s))' | quote }}
+      --username-attribute sAMAccountName
+      --firstname-attribute givenName
+      --surname-attribute sn
+      --email-attribute mail
+      --synchronize-users
+  register: ccdc_devtools_gitea_ldap
+  # Idempotent: only add when a source with this name is not already listed.
+  when: ccdc_devtools_ldap_source_name not in ccdc_devtools_gitea_auth.stdout
+  changed_when: ccdc_devtools_gitea_ldap.rc == 0
+  no_log: true
+
+# --- Surface the Nexus first-boot admin password (Nexus backend only) ----------
+- name: Wait for the Nexus initial admin password file (first boot)
+  ansible.builtin.command:
+    cmd: docker exec ccdc_nexus cat /nexus-data/admin.password
+    chdir: "{{ ccdc_devtools_dir }}"
+  register: ccdc_devtools_nexus_pw
+  changed_when: false
+  failed_when: false
+  retries: 30
+  delay: 10
+  until: ccdc_devtools_nexus_pw.rc == 0 and (ccdc_devtools_nexus_pw.stdout | length) > 0
+  when: ccdc_devtools_artifact_backend != 'artifactory'
+
+- name: Report the Nexus admin credentials
+  ansible.builtin.debug:
+    msg: >-
+      Nexus is up at http://{{ ansible_default_ipv4.address | default('<dev01-ip>') }}:{{ ccdc_devtools_artifactory_port }}/ .
+      Log in as 'admin' with the first-boot password:
+      {{ ccdc_devtools_nexus_pw.stdout | default('(not captured — run: docker exec ccdc_nexus cat /nexus-data/admin.password)') }}
+      (Nexus prompts you to change it on first login.)
+  when: ccdc_devtools_artifact_backend != 'artifactory'

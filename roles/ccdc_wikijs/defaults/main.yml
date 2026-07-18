@@ -1,0 +1,98 @@
+---
+# ===========================================================================
+# ccdc_wikijs - all tunables (namespaced with the role name to avoid
+# collisions, since Ludus passes role_vars to every role on a VM).
+# ===========================================================================
+
+# Directory that holds the docker-compose stack for Wiki.js.
+ccdc_wikijs_stack_dir: /opt/ccdc/wikijs
+
+# ---------------------------------------------------------------------------
+# Container image tags. Pinned to the major tag (:2) for the lab.
+# ---------------------------------------------------------------------------
+ccdc_wikijs_image: "ghcr.io/requarks/wiki:2"
+ccdc_wikijs_db_image: "postgres:16"
+
+# ---------------------------------------------------------------------------
+# Published port. Wiki.js serves HTTP on container port 3000; this is the
+# host port that maps to it. Reach the wiki at http://<vm-ip>:<port>/.
+# ---------------------------------------------------------------------------
+ccdc_wikijs_port: 8083
+
+# ---------------------------------------------------------------------------
+# PostgreSQL backend credentials (consumed by both the db and wiki services).
+# ---------------------------------------------------------------------------
+ccdc_wikijs_db_name: wiki
+ccdc_wikijs_db_user: wikijs
+ccdc_wikijs_db_password: "PRccdc-WikiDB-2026!"
+
+# ---------------------------------------------------------------------------
+# Local admin account. Wiki.js 2.x (stable) does not create the admin from
+# environment variables, so this role provisions it AUTOMATICALLY on first run
+# by POSTing these values to Wiki.js's /finalize setup endpoint (idempotent --
+# if the instance is already finalized, the existing admin is left untouched).
+# ---------------------------------------------------------------------------
+ccdc_wikijs_admin_email: "admin@prccdc.local"
+ccdc_wikijs_admin_password: "PRccdc-Wiki-2026!"
+
+# Public site URL Wiki.js bakes in at finalize (used for generated links).
+# Leave both empty to auto-derive http://<vm-primary-ip>:<port> at deploy time,
+# or set ccdc_wikijs_host to a hostname/IP, or ccdc_wikijs_site_url to a full URL.
+ccdc_wikijs_host: ""
+ccdc_wikijs_site_url: ""
+
+# ---------------------------------------------------------------------------
+# Active Directory / LDAP authentication (domain prccdc.local).
+# These drive both files/ldap-config.md and the best-effort DB seed.
+# ---------------------------------------------------------------------------
+# Domain controller that answers LDAP. Prefer the DC's DNS name in a real
+# range; the IP default matches the PRCCDC DC (10.{second_octet}.10.10).
+ccdc_wikijs_ldap_host: "10.2.10.10"
+
+# 389 = LDAP (no TLS). Set to 636 and ccdc_wikijs_ldap_tls: true for LDAPS.
+ccdc_wikijs_ldap_port: 389
+ccdc_wikijs_ldap_tls: false
+# Accept a self-signed / lab CA cert when TLS is enabled (lab convenience).
+ccdc_wikijs_ldap_allow_self_signed: true
+
+# Bind (service) account used to search the directory. Created by the
+# ccdc_ad_accounts role at cn=svc_ldap,ou=ServiceAccounts,ou=CCDC,...
+ccdc_wikijs_ldap_bind_dn: "cn=svc_ldap,ou=ServiceAccounts,ou=CCDC,dc=prccdc,dc=local"
+ccdc_wikijs_ldap_bind_password: "PRccdc-Svc-2026!"
+
+# Where to search for user objects. ou=CCDC covers the CCDC layout; use
+# cn=Users,dc=prccdc,dc=local (or the domain root dc=prccdc,dc=local) to also
+# reach built-in / default-container users.
+ccdc_wikijs_ldap_search_base: "ou=CCDC,dc=prccdc,dc=local"
+
+# User lookup filter. NOTE: Wiki.js / passport-ldapauth substitutes the
+# {{username}} token with the login name (some docs call this {{input}}).
+ccdc_wikijs_ldap_user_filter: "(&(objectClass=user)(sAMAccountName={% raw %}{{username}}{% endraw %}))"
+
+# Field mappings (LDAP attribute -> Wiki.js user field).
+#   uniqueId  -> objectGUID (stable) or sAMAccountName (human-readable)
+#   email     -> mail
+#   name      -> displayName (falls back to cn)
+ccdc_wikijs_ldap_mapping_uid: "objectGUID"
+ccdc_wikijs_ldap_mapping_email: "mail"
+ccdc_wikijs_ldap_mapping_display_name: "displayName"
+ccdc_wikijs_ldap_mapping_picture: ""
+
+# Strategy label shown on the Wiki.js login page.
+ccdc_wikijs_ldap_display_name: "Active Directory"
+
+# Auto-create a Wiki.js account the first time an AD user logs in, so domain
+# users do not have to be pre-provisioned in the wiki.
+ccdc_wikijs_ldap_self_registration: true
+
+# ---------------------------------------------------------------------------
+# Best-effort DB seed of the LDAP auth strategy.
+#
+# Wiki.js stores auth strategies in its database (populated through the admin
+# UI), so fully unattended LDAP is NOT reliable: the `authentication` table
+# only exists AFTER the first-run setup wizard is completed. When true, this
+# role attempts a non-fatal psql upsert of the AD strategy *if* that table is
+# already present; otherwise it skips and you configure LDAP in the UI using
+# files/ldap-config.md. The seed never fails the play.
+# ---------------------------------------------------------------------------
+ccdc_wikijs_seed_ldap: true

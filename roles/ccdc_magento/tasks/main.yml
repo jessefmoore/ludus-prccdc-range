@@ -1,0 +1,105 @@
+---
+# ===========================================================================
+# ccdc_magento - deploy the Bitnami Magento all-in-one stack via Docker
+# Compose. Docker + the `docker compose` plugin are already installed by
+# geerlingguy.docker (listed before this role); we do NOT install Docker here.
+# ===========================================================================
+
+- name: Create Magento stack directory
+  ansible.builtin.file:
+    path: "{{ ccdc_magento_stack_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Template docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ ccdc_magento_stack_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  register: ccdc_magento_compose
+
+- name: Check whether the Magento container is already running
+  ansible.builtin.command:
+    cmd: docker compose ps --status running --format '{{ "{{" }}.Service{{ "}}" }}'
+    chdir: "{{ ccdc_magento_stack_dir }}"
+  register: ccdc_magento_ps
+  changed_when: false
+  failed_when: false
+
+- name: Bring up the Magento stack
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ ccdc_magento_stack_dir }}"
+  register: ccdc_magento_up
+  when: >-
+    ccdc_magento_compose is changed
+    or 'magento' not in ccdc_magento_ps.stdout
+  changed_when: >-
+    ('Started' in ccdc_magento_up.stderr)
+    or ('Created' in ccdc_magento_up.stderr)
+    or ('Recreate' in ccdc_magento_up.stderr)
+
+# ---------------------------------------------------------------------------
+# Run the Magento installer once (the alexcheng image does NOT auto-install
+# reliably). Idempotent: keyed on the presence of app/etc/env.php inside the
+# web container. Waits for the DB to answer first.
+# ---------------------------------------------------------------------------
+- name: Wait for the Magento DB to accept connections
+  ansible.builtin.command:
+    cmd: >-
+      docker compose exec -T db
+      mysqladmin ping -h localhost -uroot -p{{ ccdc_magento_db_root_password }}
+    chdir: "{{ ccdc_magento_stack_dir }}"
+  register: ccdc_magento_dbping
+  changed_when: false
+  failed_when: false
+  retries: 30
+  delay: 10
+  until: ccdc_magento_dbping.rc == 0
+
+- name: Check whether Magento is already installed (env.php present)
+  ansible.builtin.command:
+    cmd: docker compose exec -T magento test -f /var/www/html/app/etc/env.php
+    chdir: "{{ ccdc_magento_stack_dir }}"
+  register: ccdc_magento_installed
+  changed_when: false
+  failed_when: false
+
+- name: Install Magento (setup:install) if not already installed
+  ansible.builtin.command:
+    cmd: >-
+      docker compose exec -T -u www-data magento
+      php bin/magento setup:install
+      --base-url=http://{{ ccdc_magento_host }}:{{ ccdc_magento_port }}/
+      --db-host=db --db-name={{ ccdc_magento_db_name }}
+      --db-user=root --db-password={{ ccdc_magento_db_root_password }}
+      --admin-firstname={{ ccdc_magento_admin_firstname }}
+      --admin-lastname={{ ccdc_magento_admin_lastname }}
+      --admin-email={{ ccdc_magento_admin_email }}
+      --admin-user={{ ccdc_magento_admin_user }}
+      --admin-password={{ ccdc_magento_admin_password }}
+      --language={{ ccdc_magento_language }}
+      --currency={{ ccdc_magento_currency }}
+      --timezone={{ ccdc_magento_timezone }}
+      --use-rewrites=1
+      --backend-frontname={{ ccdc_magento_backend_frontname }}
+    chdir: "{{ ccdc_magento_stack_dir }}"
+  register: ccdc_magento_install
+  when: ccdc_magento_installed.rc != 0
+  changed_when: "'Magento installation complete' in ccdc_magento_install.stdout"
+  failed_when:
+    - ccdc_magento_install.rc != 0
+    - "'Magento installation complete' not in ccdc_magento_install.stdout"
+  no_log: false
+
+- name: Report where to reach Magento
+  ansible.builtin.debug:
+    msg: >-
+      Magento is up{{ ' (installed this run)' if (ccdc_magento_install is defined and ccdc_magento_install is changed) else '' }}.
+      Storefront: http://{{ ccdc_magento_host }}:{{ ccdc_magento_port }}/
+      Admin: http://{{ ccdc_magento_host }}:{{ ccdc_magento_port }}/{{ ccdc_magento_backend_frontname }}
+      ({{ ccdc_magento_admin_user }} / password from ccdc_magento_admin_password)

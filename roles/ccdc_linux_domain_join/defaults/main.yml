@@ -1,0 +1,40 @@
+---
+# ------------------------------------------------------------------------------
+# ccdc_linux_domain_join — defaults
+# All tunables are namespaced with the role name. Override any of these via
+# Ludus role_vars.
+# ------------------------------------------------------------------------------
+
+# The AD DNS domain (lower case, as used by realm/SSSD).
+ccdc_domain: prccdc.local
+
+# The Kerberos realm — same domain but UPPER CASE (krb5 requires upper case).
+ccdc_domain_upper: PRCCDC.LOCAL
+
+# The short NetBIOS/flat domain name.
+ccdc_domain_netbios: PRCCDC
+
+# IP address of the Domain Controller. This host is also the DNS server the
+# Linux box must use so the AD domain (and its SRV records) resolve.
+ccdc_dc_ip: "10.2.10.10"
+
+# Privileged AD account used to create the computer object during the join.
+ccdc_join_user: Administrator
+
+# Password for ccdc_join_user. OVERRIDE in production/competition via role_vars.
+# Handled with no_log so it never appears in Ansible output.
+ccdc_join_password: "PRccdc-Admin-2026!"
+
+# Optional OU (distinguished name) to place the new computer object in, e.g.
+# "OU=Linux,OU=Servers,DC=prccdc,DC=local". Empty = default Computers container.
+ccdc_computer_ou: ""
+
+# AD group whose members are granted passwordless-free (full) sudo on this host.
+# Case-insensitive; spaces are allowed (SSSD lowercases and space-preserves).
+ccdc_sudo_group: "domain admins"
+
+# Optional list of AD groups permitted to log in. When empty, ALL domain users
+# are permitted (realm permit --all) — acceptable for a lab. When non-empty,
+# only the listed groups may authenticate (realm permit --groups ...).
+# Example: ["linux admins", "soc analysts"]
+ccdc_allowed_login_groups: []
