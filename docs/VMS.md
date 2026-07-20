@@ -18,6 +18,7 @@ AD domain **prccdc.local** (NetBIOS `PRCCDC`). DNS server for all VMs = the DC (
 | CCDC-data01 | Ubuntu 22.04 | 10.50.30.20 | MinIO + MySQL |
 | CCDC-sso01  | Ubuntu 22.04 | 10.50.30.30 | Keycloak + waitAPI + RideAPI |
 | CCDC-wazuh01| Ubuntu 22.04 | 10.50.40.10 | Wazuh SIEM manager |
+| CCDC-score01| Ubuntu 24.04 | 10.50.50.10 | Quotient scoring engine (scorebot) |
 | (router)    | Debian *(⇐Alpine)* | 10.50.x.254 / WAN | Range firewall / gateway |
 
 ---
@@ -132,3 +133,17 @@ AD domain **prccdc.local** (NetBIOS `PRCCDC`). DNS server for all VMs = the DC (
 
 > Wazuh sets a randomized admin password at install; retrieve it on the manager
 > (`sudo tar -O -xvf wazuh-install-files.tar wazuh-install-files/wazuh-passwords.txt`).
+
+---
+
+## VLAN 50 — Scoring
+
+### CCDC-score01 — Quotient scoring engine  (10.50.50.10)
+| Item | Value |
+|------|-------|
+| Scoreboard | http://10.50.50.10/ · admin `admin` / `PRccdc-Score-Admin-2026!` · team `blue1` / `PRccdc-Score-Blue1-2026!` |
+| Engine | [dbaseqp/Quotient](https://github.com/dbaseqp/Quotient) via docker compose (server + 5 runners + PostgreSQL + Redis), dir `/opt/ccdc/quotient` |
+| Scored | 30 checks / 10 boxes — ping, DNS, LDAP, RDP, SSH, HTTP/website-text, MySQL, TCP (see `roles/ccdc_scoring/README.md`) |
+| Behaviour | Auto-starts unpaused (role activates `blue1` + starts the competition). Set `ccdc_scoring_start_paused: true` + `ccdc_scoring_autostart: false` for a real competition |
+| Not | domain-joined, and runs no Wazuh agent (kept out-of-band as the scorebot) |
+| Verify | `curl -I http://10.50.50.10/` (308 → /login) ; `docker compose -f /opt/ccdc/quotient/docker-compose.yml ps` |

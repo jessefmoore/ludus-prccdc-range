@@ -19,6 +19,7 @@ Full per-VM detail is in [VMS.md](VMS.md); all passwords are in [CREDENTIALS.md]
 | Keycloak (SSO) | http://10.50.30.30:8080 | `admin` / `PRccdc-Keycloak-2026!` |
 | MinIO console | http://10.50.30.20:9001 | `ccdcadmin` / `PRccdc-Minio-2026!` |
 | Wazuh (SIEM) | https://10.50.40.10 | `admin` / installer-generated (see [VMS.md](VMS.md)) |
+| Quotient scoreboard | http://10.50.50.10/ | admin `admin` / `PRccdc-Score-Admin-2026!` · team `blue1` / `PRccdc-Score-Blue1-2026!` |
 
 ## APIs (JSON)
 | Service | URL |

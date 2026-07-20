@@ -1,0 +1,95 @@
+---
+# =============================================================================
+# ccdc_scoring — Quotient scoring engine (github.com/dbaseqp/Quotient)
+# Deploys Quotient via docker compose and configures it to score the PRCCDC
+# CCDC range services. All vars namespaced ccdc_scoring_*.
+# =============================================================================
+
+ccdc_scoring_repo: "https://github.com/dbaseqp/Quotient"
+ccdc_scoring_dir: "/opt/ccdc/quotient"
+
+# --- Web UI + engine settings ---
+ccdc_scoring_event_name: "PRCCDC CCDC Range"
+ccdc_scoring_http_port: 80           # Quotient server (443 only if SSL configured)
+ccdc_scoring_delay: 60               # seconds between scoring rounds
+ccdc_scoring_jitter: 10
+ccdc_scoring_points: 5               # points per successful service check
+ccdc_scoring_timeout: 20
+ccdc_scoring_sla_threshold: 5
+ccdc_scoring_sla_penalty: 25
+ccdc_scoring_start_paused: false     # false = auto-run scoring (set true for a real competition)
+
+# After Quotient is up, auto-activate the blue team and mark the competition as
+# started so a fresh rebuild comes up scoring immediately (no manual UI kick).
+# Set false for a real competition where an admin starts scoring by hand.
+ccdc_scoring_autostart: true
+ccdc_scoring_team_identifier: "1"    # per-team box identifier (Quotient substitutes into checks)
+
+# --- Infra passwords (docker .env) ---
+ccdc_scoring_db_password: "PRccdc-Score-DB-2026!"
+ccdc_scoring_redis_password: "PRccdc-Score-Redis-2026!"
+
+# --- Scoreboard accounts ---
+ccdc_scoring_admin_user: "admin"
+ccdc_scoring_admin_password: "PRccdc-Score-Admin-2026!"
+ccdc_scoring_team_name: "blue1"
+ccdc_scoring_team_password: "PRccdc-Score-Blue1-2026!"
+
+# --- Credlists used by the checks (username,password) ---
+# LinuxUsers  : an AD employee account; SSH to every domain-joined Linux host
+#               and to the desk01 Windows OpenSSH server (SSSD short names).
+ccdc_scoring_linux_user: "athompson"
+ccdc_scoring_linux_password: "PRccdc-User-2026!"
+# WindowsUsers: Domain Admin; LDAP bind to the DC.
+ccdc_scoring_windows_user: "Administrator"
+ccdc_scoring_windows_password: "PRccdc-Admin-2026!"
+# DBUsers     : MySQL app user on data01 (db `appdb`).
+ccdc_scoring_db_user: "appuser"
+ccdc_scoring_db_check_password: "PRccdc-MySQL-2026!"
+# MinioUsers  : MinIO root account on data01 (custom authenticated S3 check).
+#               <= ccdc_data : ccdc_data_minio_root_user / _root_password
+ccdc_scoring_minio_user: "ccdcadmin"
+ccdc_scoring_minio_password: "PRccdc-Minio-2026!"
+# KeycloakUsers: Keycloak admin on sso01 (custom OIDC token-grant check).
+#               <= ccdc_sso : ccdc_sso_keycloak_admin / _admin_password
+ccdc_scoring_keycloak_user: "admin"
+ccdc_scoring_keycloak_password: "PRccdc-Keycloak-2026!"
+
+# --- Custom (deep) checks — parameters, all coupled to the producing role -----
+# Squid forward proxy: fetch this URL THROUGH the proxy (must return 200). The
+# club page is static + always-on (served by ccdc_wordpress on web01).
+ccdc_scoring_squid_port: 3128
+ccdc_scoring_squid_test_url: "http://10.50.20.10/club/"
+# MinIO S3: seeded bucket + object created by ccdc_data (bucket var + minio-mc
+# init that uploads placeholder.txt).
+ccdc_scoring_minio_api_port: 9000
+ccdc_scoring_minio_bucket: "company-data"        # <= ccdc_data_minio_bucket
+ccdc_scoring_minio_object: "placeholder.txt"     # <= ccdc_data minio-mc init object
+# Keycloak: realm to password-grant against (built-in master realm).
+ccdc_scoring_keycloak_port: 8080
+ccdc_scoring_keycloak_realm: "master"
+
+# --- Hardened service-content checks -----------------------------------------
+# Values asserted by the "deep" checks (WordPress title, seeded MySQL rows). They
+# assert real data PRODUCED BY OTHER ROLES AT DEPLOY TIME, so a scored service
+# proves its content is intact, not merely that the port is open. Each must stay
+# in sync with the role that seeds it (all reproduced automatically every deploy):
+#   - ccdc_scoring_wp_site_title  <= ccdc_wordpress : ccdc_wordpress_site_title
+#   - ccdc_scoring_sql_*          <= ccdc_data      : templates/seed.sql.j2
+ccdc_scoring_wp_site_title: "PRCCDC GrayHats Club"       # WordPress home <title>
+ccdc_scoring_sql_customer_name: "Alice Johnson"          # appdb customers WHERE id=1
+ccdc_scoring_sql_order_product: "Widget Pro License"     # appdb orders    WHERE id=1
+
+# --- Range targets (match docs/VMS.md; override if the topology changes) ---
+ccdc_scoring_domain: "prccdc.local"
+ccdc_scoring_dns_name: "prccdc.local"          # AD apex A record -> the DC's IP (always registered)
+ccdc_scoring_t_dc01: "10.50.10.10"
+ccdc_scoring_t_desk01: "10.50.10.20"
+ccdc_scoring_t_wiki01: "10.50.10.30"
+ccdc_scoring_t_proxy01: "10.50.10.40"
+ccdc_scoring_t_web01: "10.50.20.10"
+ccdc_scoring_t_shop01: "10.50.20.20"
+ccdc_scoring_t_dev01: "10.50.30.10"
+ccdc_scoring_t_data01: "10.50.30.20"
+ccdc_scoring_t_sso01: "10.50.30.30"
+ccdc_scoring_t_wazuh01: "10.50.40.10"

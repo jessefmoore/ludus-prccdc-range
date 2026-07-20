@@ -1,0 +1,321 @@
+# {{ ansible_managed }}
+# Quotient scoring config for the PRCCDC CCDC range. Single range (literal IPs,
+# no "_" team templating). Scores 30 checks across 10 boxes covering
+# HTTP/website-text, SSH, RDP, DNS, LDAP, SQL and raw TCP.
+
+[RequiredSettings]
+  EventName = "{{ ccdc_scoring_event_name }}"
+  EventType = "rvb"
+  DBConnectURL = "postgres://engineuser:{{ ccdc_scoring_db_password }}@quotient_database:5432/engine"
+  BindAddress = "0.0.0.0"
+
+[MiscSettings]
+  EasyPCR = true
+  ShowDebugToBlueTeam = false
+  StartPaused = {{ ccdc_scoring_start_paused | lower }}
+  Delay = {{ ccdc_scoring_delay }}
+  Jitter = {{ ccdc_scoring_jitter }}
+  Points = {{ ccdc_scoring_points }}
+  Timeout = {{ ccdc_scoring_timeout }}
+  SlaThreshold = {{ ccdc_scoring_sla_threshold }}
+  SlaPenalty = {{ ccdc_scoring_sla_penalty }}
+
+[CredlistSettings]
+  [[CredlistSettings.Credlist]]
+    CredlistName = "LinuxUsers"
+    CredlistPath = "linux.credlist"
+    CredlistExplainText = "username,password"
+  [[CredlistSettings.Credlist]]
+    CredlistName = "WindowsUsers"
+    CredlistPath = "windows.credlist"
+    CredlistExplainText = "username,password"
+  [[CredlistSettings.Credlist]]
+    CredlistName = "DBUsers"
+    CredlistPath = "db.credlist"
+    CredlistExplainText = "username,password"
+  [[CredlistSettings.Credlist]]
+    CredlistName = "MinioUsers"
+    CredlistPath = "minio.credlist"
+    CredlistExplainText = "username,password"
+  [[CredlistSettings.Credlist]]
+    CredlistName = "KeycloakUsers"
+    CredlistPath = "keycloak.credlist"
+    CredlistExplainText = "username,password"
+
+[[Admin]]
+  Name = "{{ ccdc_scoring_admin_user }}"
+  Pw = "{{ ccdc_scoring_admin_password }}"
+
+[[Team]]
+  Name = "{{ ccdc_scoring_team_name }}"
+  Pw = "{{ ccdc_scoring_team_password }}"
+
+# =============================================================================
+# BOXES / SERVICE CHECKS
+# =============================================================================
+
+# ---- VLAN 10: Active Directory DC + DNS (Win2016) --------------------------
+[[Box]]
+  Name = "dc01"
+  IP = "{{ ccdc_scoring_t_dc01 }}"
+  [[Box.Ping]]
+    Display = "ping"
+  [[Box.Dns]]
+    Display = "dns"
+    Port = 53
+    [[Box.Dns.Record]]
+      Kind = "A"
+      Domain = "{{ ccdc_scoring_dns_name }}"
+      Answer = ["{{ ccdc_scoring_t_dc01 }}"]
+  [[Box.Ldap]]
+    Display = "ldap"
+    Port = 389
+    CredLists = ["WindowsUsers"]
+    Domain = "{{ ccdc_scoring_domain }}"
+    Encrypted = false
+  [[Box.Rdp]]
+    Display = "rdp"
+    Port = 3389
+
+# ---- VLAN 10: Windows Desktop (RDP + SSH) ----------------------------------
+[[Box]]
+  Name = "desk01"
+  IP = "{{ ccdc_scoring_t_desk01 }}"
+  [[Box.Rdp]]
+    Display = "rdp"
+    Port = 3389
+  # Windows OpenSSH: score on a successful AD login only (no command block).
+  # Quotient runs command checks over an interactive PTY shell, which is
+  # unreliable for Windows domain users (cmd.exe returns empty stdout under a
+  # PTY), so a successful authentication as the AD user is the service signal.
+  [[Box.Ssh]]
+    Display = "ssh"
+    CredLists = ["LinuxUsers"]
+
+# ---- VLAN 10: Wiki.js (HTTP + website text + SSH) --------------------------
+[[Box]]
+  Name = "wiki01"
+  IP = "{{ ccdc_scoring_t_wiki01 }}"
+  [[Box.Web]]
+    Display = "wikijs"
+    Scheme = "http"
+    Port = 8083
+    [[Box.Web.Url]]
+      Path = "/"
+      Status = 200
+      Regex = "(?i)wiki"
+  [[Box.Ssh]]
+    Display = "ssh"
+    CredLists = ["LinuxUsers"]
+    [[Box.Ssh.Command]]
+      Command = "hostname"
+      Contains = true
+      Output = "wiki01"
+
+# ---- VLAN 10: Squid forward proxy (functional proxy fetch + SSH) -----------
+[[Box]]
+  Name = "proxy01"
+  IP = "{{ ccdc_scoring_t_proxy01 }}"
+  # Deep check: fetch a URL THROUGH Squid and require HTTP 200 — proves the
+  # proxy actually forwards traffic, not just that port 3128 is open. Runs from
+  # the in-range runner (source IP inside Squid's allowed CIDR).
+  [[Box.Custom]]
+    Display = "proxy"
+    Command = "/app/checks/squid_proxy.sh ROUND TARGET {{ ccdc_scoring_squid_port }} {{ ccdc_scoring_squid_test_url }}"
+    Regex = "SUCCESS"
+  [[Box.Ssh]]
+    Display = "ssh"
+    CredLists = ["LinuxUsers"]
+    [[Box.Ssh.Command]]
+      Command = "hostname"
+      Contains = true
+      Output = "proxy01"
+
+# ---- VLAN 20: WordPress / media web (HTTP + website text + RDP) ------------
+[[Box]]
+  Name = "web01"
+  IP = "{{ ccdc_scoring_t_web01 }}"
+  [[Box.Web]]
+    Display = "wordpress"
+    Scheme = "http"
+    Port = 80
+    # Deep check: the rendered home page must carry the configured site title
+    # (ccdc_wordpress_site_title) — proves the real WP site is up, not just any
+    # 200. Also validates the login page still renders (Quotient tests one URL
+    # per round, so both are exercised over time).
+    [[Box.Web.Url]]
+      Path = "/wordpress/"
+      Status = 200
+      Regex = "{{ ccdc_scoring_wp_site_title }}"
+    [[Box.Web.Url]]
+      Path = "/wordpress/wp-login.php"
+      Status = 200
+      Regex = "(?i)wordpress"
+  [[Box.Web]]
+    Display = "club"
+    Scheme = "http"
+    Port = 80
+    [[Box.Web.Url]]
+      Path = "/club/"
+      Status = 200
+      Regex = "(?i)grayhats"
+  [[Box.Rdp]]
+    Display = "rdp"
+    Port = 3389
+
+# ---- VLAN 20: Magento e-commerce (HTTP + website text + SSH) ---------------
+[[Box]]
+  Name = "shop01"
+  IP = "{{ ccdc_scoring_t_shop01 }}"
+  [[Box.Web]]
+    Display = "magento"
+    Scheme = "http"
+    Port = 8085
+    [[Box.Web.Url]]
+      Path = "/"
+      Status = 200
+      Regex = "(?i)magento"
+  [[Box.Ssh]]
+    Display = "ssh"
+    CredLists = ["LinuxUsers"]
+    [[Box.Ssh.Command]]
+      Command = "hostname"
+      Contains = true
+      Output = "shop01"
+
+# ---- VLAN 30: Gitea + Nexus artifact repo (HTTP + SSH + gitea-ssh TCP) -----
+[[Box]]
+  Name = "dev01"
+  IP = "{{ ccdc_scoring_t_dev01 }}"
+  [[Box.Web]]
+    Display = "gitea"
+    Scheme = "http"
+    Port = 3000
+    [[Box.Web.Url]]
+      Path = "/"
+      Status = 200
+      Regex = "(?i)gitea"
+  [[Box.Web]]
+    Display = "nexus"
+    Scheme = "http"
+    Port = 8082
+    [[Box.Web.Url]]
+      Path = "/"
+      Status = 200
+  [[Box.Tcp]]
+    Display = "gitea-ssh"
+    Port = 2222
+  [[Box.Ssh]]
+    Display = "ssh"
+    CredLists = ["LinuxUsers"]
+    [[Box.Ssh.Command]]
+      Command = "hostname"
+      Contains = true
+      Output = "dev01"
+
+# ---- VLAN 30: MinIO object store + MySQL (SQL + TCP + HTTP + SSH) ----------
+[[Box]]
+  Name = "data01"
+  IP = "{{ ccdc_scoring_t_data01 }}"
+  [[Box.Sql]]
+    Display = "mysql"
+    Port = 3306
+    Kind = "mysql"
+    CredLists = ["DBUsers"]
+    # Deep check: query the seeded business tables and match known values
+    # (Quotient checks column 0, exact string match). Proves the appdb data is
+    # intact, not merely that MySQL answers. Quotient runs one random query per
+    # round, so both tables get exercised over time.
+    [[Box.Sql.Query]]
+      Database = "appdb"
+      Command = "SELECT name FROM customers WHERE id = 1"
+      Output = "{{ ccdc_scoring_sql_customer_name }}"
+    [[Box.Sql.Query]]
+      Database = "appdb"
+      Command = "SELECT product FROM orders WHERE id = 1"
+      Output = "{{ ccdc_scoring_sql_order_product }}"
+  # Deep check: authenticated S3 — connect with creds, confirm the seeded
+  # bucket exists, and read a known object. Proves the object store is
+  # functional WITH credentials and the seeded data is intact (far deeper than
+  # an unauthenticated health/TCP probe).
+  [[Box.Custom]]
+    Display = "minio-s3"
+    Command = "python3 /app/checks/minio_s3.py ROUND TARGET {{ ccdc_scoring_minio_api_port }} USERNAME PASSWORD {{ ccdc_scoring_minio_bucket }} {{ ccdc_scoring_minio_object }}"
+    CredLists = ["MinioUsers"]
+    Regex = "SUCCESS"
+  [[Box.Web]]
+    Display = "minio-console"
+    Scheme = "http"
+    Port = 9001
+    [[Box.Web.Url]]
+      Path = "/"
+      Status = 200
+  [[Box.Ssh]]
+    Display = "ssh"
+    CredLists = ["LinuxUsers"]
+    [[Box.Ssh.Command]]
+      Command = "hostname"
+      Contains = true
+      Output = "data01"
+
+# ---- VLAN 30: Keycloak SSO + waitAPI + RideAPI (HTTP x3 + SSH) -------------
+[[Box]]
+  Name = "sso01"
+  IP = "{{ ccdc_scoring_t_sso01 }}"
+  [[Box.Web]]
+    Display = "keycloak"
+    Scheme = "http"
+    Port = 8080
+    [[Box.Web.Url]]
+      Path = "/realms/master"
+      Status = 200
+      Regex = "master"
+  # Deep check: password-grant a real access_token from the realm — proves
+  # Keycloak actually authenticates users and mints tokens (the web check above
+  # only proves the realm endpoint serves).
+  [[Box.Custom]]
+    Display = "keycloak-token"
+    Command = "/app/checks/keycloak_token.sh ROUND TARGET {{ ccdc_scoring_keycloak_port }} USERNAME PASSWORD {{ ccdc_scoring_keycloak_realm }}"
+    CredLists = ["KeycloakUsers"]
+    Regex = "SUCCESS"
+  [[Box.Web]]
+    Display = "waitapi"
+    Scheme = "http"
+    Port = 8081
+    [[Box.Web.Url]]
+      Path = "/"
+      Status = 200
+  [[Box.Web]]
+    Display = "rideapi"
+    Scheme = "http"
+    Port = 8082
+    [[Box.Web.Url]]
+      Path = "/"
+      Status = 200
+  [[Box.Ssh]]
+    Display = "ssh"
+    CredLists = ["LinuxUsers"]
+    [[Box.Ssh.Command]]
+      Command = "hostname"
+      Contains = true
+      Output = "sso01"
+
+# ---- VLAN 40: Wazuh SIEM manager (TCP dashboard + API + SSH) ---------------
+# Scored over TCP (self-signed HTTPS dashboard + API port) rather than a Web
+# check to avoid TLS-verification flakiness against the installer's cert.
+[[Box]]
+  Name = "wazuh01"
+  IP = "{{ ccdc_scoring_t_wazuh01 }}"
+  [[Box.Tcp]]
+    Display = "dashboard"
+    Port = 443
+  [[Box.Tcp]]
+    Display = "wazuh-api"
+    Port = 55000
+  [[Box.Ssh]]
+    Display = "ssh"
+    CredLists = ["LinuxUsers"]
+    [[Box.Ssh.Command]]
+      Command = "hostname"
+      Contains = true
+      Output = "wazuh01"

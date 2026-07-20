@@ -1,0 +1,60 @@
+---
+# =============================================================================
+# ccdc_win_openssh — ensure sshd is installed, running (auto), and firewalled.
+# The chocolatey `openssh` package (installed in the VM's chocolatey_packages,
+# before user roles) drops the OpenSSH binaries but does not reliably register
+# the service, set it to auto-start, or open the firewall — so port 22 ends up
+# closed. This role fixes all three, idempotently.
+# =============================================================================
+
+- name: Check whether the sshd service already exists
+  ansible.windows.win_service_info:
+    name: sshd
+  register: ccdc_openssh_svc
+  failed_when: false
+
+# Register the service only if it is missing. Prefer the Windows built-in
+# OpenSSH.Server capability; fall back to the install-sshd.ps1 that ships with
+# the chocolatey/OpenSSH binaries. Guarded so it is a no-op once sshd exists.
+- name: Register the OpenSSH Server service when it is missing
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    if (Get-Service -Name sshd -ErrorAction SilentlyContinue) { 'ALREADY_PRESENT'; exit 0 }
+    try {
+      $cap = Get-WindowsCapability -Online -Name 'OpenSSH.Server*' -ErrorAction Stop |
+             Where-Object { $_.State -ne 'Installed' } | Select-Object -First 1
+      if ($cap) { Add-WindowsCapability -Online -Name $cap.Name -ErrorAction Stop | Out-Null }
+    } catch {}
+    if (-not (Get-Service -Name sshd -ErrorAction SilentlyContinue)) {
+      $installer = Get-ChildItem -Path 'C:\Program Files','C:\Program Files (x86)' -Recurse `
+                     -Filter 'install-sshd.ps1' -ErrorAction SilentlyContinue | Select-Object -First 1
+      if ($installer) { & powershell -NoProfile -ExecutionPolicy Bypass -File $installer.FullName | Out-Null }
+    }
+    if (Get-Service -Name sshd -ErrorAction SilentlyContinue) { 'REGISTERED' } else { throw 'sshd could not be installed' }
+  when: not (ccdc_openssh_svc.exists | default(false))
+  register: ccdc_openssh_register
+  changed_when: "'REGISTERED' in ccdc_openssh_register.stdout"
+
+- name: Ensure sshd is set to start automatically and is running
+  ansible.windows.win_service:
+    name: sshd
+    start_mode: auto
+    state: started
+
+- name: Ensure ssh-agent is available (auto-start; best-effort)
+  ansible.windows.win_service:
+    name: ssh-agent
+    start_mode: auto
+    state: started
+  failed_when: false
+
+- name: Allow inbound SSH through the Windows firewall
+  community.windows.win_firewall_rule:
+    name: "{{ ccdc_win_openssh_firewall_rule_name }}"
+    localport: "{{ ccdc_win_openssh_port }}"
+    action: allow
+    direction: in
+    protocol: tcp
+    profiles: [domain, private, public]
+    enabled: true
+    state: present

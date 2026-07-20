@@ -1,0 +1,12 @@
+---
+# =============================================================================
+# ccdc_win_openssh — make the Windows OpenSSH server reachable. All vars
+# namespaced ccdc_win_openssh_*.
+# =============================================================================
+
+# TCP port sshd listens on (Windows OpenSSH default is 22).
+ccdc_win_openssh_port: 22
+
+# Inbound firewall rule name/display for the sshd allow rule.
+ccdc_win_openssh_firewall_rule_name: "OpenSSH-Server-In-TCP"
+ccdc_win_openssh_firewall_rule_display: "OpenSSH SSH Server (sshd)"

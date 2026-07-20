@@ -1,0 +1,23 @@
+---
+galaxy_info:
+  role_name: ccdc_win_openssh
+  namespace: ccdc
+  author: ccdc
+  description: >-
+    Ensure the Windows OpenSSH server (sshd) is registered, set to start
+    automatically, running, and allowed through the firewall on TCP 22. The
+    chocolatey `openssh` package lays down the binaries but does not reliably
+    start the service or open the firewall; this role makes SSH actually
+    reachable. Idempotent.
+  license: MIT
+  min_ansible_version: "2.12"
+  platforms:
+    - name: Windows
+      versions:
+        - all
+  galaxy_tags:
+    - windows
+    - openssh
+    - ssh
+    - ccdc
+dependencies: []

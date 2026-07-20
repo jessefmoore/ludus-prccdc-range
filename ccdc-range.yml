@@ -62,6 +62,7 @@ ludus:
       role: member
     roles:
       - ccdc_pii
+      - ccdc_win_openssh      # start sshd + open TCP 22 (choco openssh leaves it closed)
       - aleemladha.ludus_wazuh_agent
 
   # --- Wiki.js (AD/LDAP login) ----------------------------------------------
@@ -226,6 +227,27 @@ ludus:
     roles:
       - ccdc_linux_domain_join
       - aleemladha.wazuh_server_install
+
+  # ===========================================================================
+  # VLAN 50 — SCORING
+  # ===========================================================================
+
+  # --- Quotient scoring engine (Ubuntu 24.04 + Docker) ----------------------
+  # NOT domain-joined and runs no Wazuh agent — it is the competition scorebot,
+  # kept out-of-band. Reaches every VLAN (inter_vlan ACCEPT) to score services.
+  - vm_name: "{{ range_id }}-score01"
+    hostname: "{{ range_id }}-score01"
+    template: ubuntu-24.04-x64-server-template
+    vlan: 50
+    ip_last_octet: 10
+    ram_gb: 8
+    ram_min_gb: 4
+    cpus: 4
+    linux: true
+    primary_dns_server: "10.50.10.10"
+    roles:
+      - geerlingguy.docker
+      - ccdc_scoring
 
 # =============================================================================
 # NETWORK — flat/ACCEPT during build so all service + AD dependencies resolve.

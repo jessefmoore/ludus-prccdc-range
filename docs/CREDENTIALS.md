@@ -31,6 +31,8 @@ Wiki.js / WordPress / Gitea. Full list: `Get-ADUser -SearchBase "OU=Employees,OU
 | MinIO | http://10.50.30.20:9001 | ccdcadmin | PRccdc-Minio-2026! |
 | Keycloak | http://10.50.30.30:8080 | admin | PRccdc-Keycloak-2026! |
 | Wazuh | https://10.50.40.10 | admin | (installer-generated, see docs/VMS.md) |
+| Quotient scoreboard | http://10.50.50.10 | admin | PRccdc-Score-Admin-2026! |
+| Quotient scoreboard | http://10.50.50.10 | blue1 (team) | PRccdc-Score-Blue1-2026! |
 
 ## Ludus / Proxmox access
 | Who | Login | Password | Scope |

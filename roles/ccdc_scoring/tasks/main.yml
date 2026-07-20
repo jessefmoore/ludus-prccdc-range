@@ -1,0 +1,192 @@
+---
+# =============================================================================
+# ccdc_scoring — deploy the Quotient scoring engine + CCDC scoring config.
+# Docker + the compose plugin are already installed (geerlingguy.docker first).
+# =============================================================================
+
+- name: Raise vm.overcommit_memory for Redis (Quotient requirement)
+  ansible.posix.sysctl:
+    name: vm.overcommit_memory
+    value: "1"
+    state: present
+    reload: true
+
+- name: Install git
+  ansible.builtin.apt:
+    name: git
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  register: ccdc_score_apt
+  retries: 3
+  delay: 10
+  until: ccdc_score_apt is succeeded
+
+- name: Clone the Quotient repository
+  ansible.builtin.git:
+    repo: "{{ ccdc_scoring_repo }}"
+    dest: "{{ ccdc_scoring_dir }}"
+    recursive: true
+    version: main
+    update: false
+  register: ccdc_score_clone
+  retries: 3
+  delay: 10
+  until: ccdc_score_clone is succeeded
+
+- name: Ensure the config + credlists directories exist
+  ansible.builtin.file:
+    path: "{{ ccdc_scoring_dir }}/config/credlists"
+    state: directory
+    mode: "0755"
+
+- name: Template the docker .env
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ ccdc_scoring_dir }}/.env"
+    mode: "0600"
+  no_log: true
+
+- name: Template the Quotient event config
+  ansible.builtin.template:
+    src: event.conf.j2
+    dest: "{{ ccdc_scoring_dir }}/config/event.conf"
+    mode: "0644"
+  register: ccdc_score_conf
+
+- name: Write the credlists used by the checks
+  ansible.builtin.copy:
+    dest: "{{ ccdc_scoring_dir }}/config/credlists/{{ item.file }}"
+    content: "{{ item.user }},{{ item.password }}\n"
+    mode: "0640"
+  register: ccdc_score_creds
+  loop:
+    - { file: "linux.credlist", user: "{{ ccdc_scoring_linux_user }}", password: "{{ ccdc_scoring_linux_password }}" }
+    - { file: "windows.credlist", user: "{{ ccdc_scoring_windows_user }}", password: "{{ ccdc_scoring_windows_password }}" }
+    - { file: "db.credlist", user: "{{ ccdc_scoring_db_user }}", password: "{{ ccdc_scoring_db_check_password }}" }
+    - { file: "minio.credlist", user: "{{ ccdc_scoring_minio_user }}", password: "{{ ccdc_scoring_minio_password }}" }
+    - { file: "keycloak.credlist", user: "{{ ccdc_scoring_keycloak_user }}", password: "{{ ccdc_scoring_keycloak_password }}" }
+  no_log: true
+
+# --- Custom (deep) checks: scripts + their python dependency -------------------
+# Scripts live in ./custom-checks (mounted into the runner at /app/checks). The
+# minio S3 check needs the `minio` python package, which the runner installs
+# from custom-checks/requirements.txt at image build time (docker compose
+# --build below rebuilds the runner when this changes).
+- name: Install the custom check scripts into the runner's mounted dir
+  ansible.builtin.copy:
+    src: custom-checks/
+    dest: "{{ ccdc_scoring_dir }}/custom-checks/"
+    mode: "0755"
+  register: ccdc_score_customscripts
+
+- name: Ensure the minio python SDK is in the runner requirements
+  ansible.builtin.lineinfile:
+    path: "{{ ccdc_scoring_dir }}/custom-checks/requirements.txt"
+    line: "minio"
+    create: true
+    mode: "0644"
+  register: ccdc_score_reqs
+
+# Quotient parses config/event.conf into its PostgreSQL DB on first init only, so
+# when the scoring config OR credlists change, wipe the DB volume to force a fresh
+# re-parse of the corrected checks. (No-op on a first deploy; only fires on change.)
+- name: Wipe the Quotient DB when the scoring config changed (force config re-parse)
+  ansible.builtin.command:
+    cmd: docker compose down -v
+    chdir: "{{ ccdc_scoring_dir }}"
+  when: ccdc_score_conf is changed or ccdc_score_creds is changed
+  changed_when: true
+  failed_when: false
+
+- name: Build and start Quotient (db, redis, server, runners — divisor skipped)
+  ansible.builtin.command:
+    cmd: docker compose up --build -d db redis server runner
+    chdir: "{{ ccdc_scoring_dir }}"
+  register: ccdc_score_up
+  changed_when: >-
+    ('Built' in (ccdc_score_up.stdout ~ ccdc_score_up.stderr))
+    or ('Started' in (ccdc_score_up.stdout ~ ccdc_score_up.stderr))
+    or ('Created' in (ccdc_score_up.stdout ~ ccdc_score_up.stderr))
+    or ('Recreate' in (ccdc_score_up.stdout ~ ccdc_score_up.stderr))
+  retries: 2
+  delay: 15
+  until: ccdc_score_up.rc == 0
+
+- name: Wait for the Quotient scoreboard to answer
+  ansible.builtin.uri:
+    url: "http://localhost:{{ ccdc_scoring_http_port }}/"
+    status_code: [200, 302, 303, 401, 403]
+  register: ccdc_score_web
+  retries: 20
+  delay: 10
+  until: ccdc_score_web.status in [200, 302, 303, 401, 403]
+  failed_when: false
+
+# --- Auto-activate the blue team + start the competition -----------------------
+# Quotient boots with the competition "not started" and every team inactive, so no
+# checks run until an admin kicks it. For a hands-off rebuild we log in as admin and
+# do that over the API. All idempotent: re-activating / re-starting is a no-op.
+- name: Auto-start the competition (activate team + start scoring)
+  when: ccdc_scoring_autostart | bool
+  block:
+    - name: Log in to the Quotient admin API
+      ansible.builtin.uri:
+        url: "http://localhost:{{ ccdc_scoring_http_port }}/api/login"
+        method: POST
+        body_format: json
+        body:
+          username: "{{ ccdc_scoring_admin_user }}"
+          password: "{{ ccdc_scoring_admin_password }}"
+        status_code: [200]
+      register: ccdc_score_login
+      retries: 10
+      delay: 6
+      until: ccdc_score_login.status == 200
+      no_log: true
+
+    - name: Look up the blue team's ID
+      ansible.builtin.uri:
+        url: "http://localhost:{{ ccdc_scoring_http_port }}/api/teams"
+        method: GET
+        headers:
+          Cookie: "{{ ccdc_score_login.cookies_string }}"
+        status_code: [200]
+      register: ccdc_score_teams
+      retries: 10
+      delay: 6
+      until:
+        - ccdc_score_teams.status == 200
+        - (ccdc_score_teams.json | selectattr('Name', 'equalto', ccdc_scoring_team_name) | list | length) > 0
+
+    - name: Activate the blue team (set identifier + Active)
+      ansible.builtin.uri:
+        url: "http://localhost:{{ ccdc_scoring_http_port }}/api/admin/teams"
+        method: POST
+        headers:
+          Cookie: "{{ ccdc_score_login.cookies_string }}"
+          Content-Type: application/json
+        # Build the body with to_json so the team id serialises as a JSON number
+        # (Quotient's UpdateTeams decodes id into a Go uint and rejects a quoted string).
+        body: >-
+          {{
+            {'teams': [{
+              'id': (ccdc_score_teams.json | selectattr('Name', 'equalto', ccdc_scoring_team_name) | first).ID,
+              'identifier': ccdc_scoring_team_identifier,
+              'active': true
+            }]} | to_json
+          }}
+        status_code: [200]
+
+    - name: Mark the competition as started
+      ansible.builtin.uri:
+        url: "http://localhost:{{ ccdc_scoring_http_port }}/api/competition/start"
+        method: POST
+        headers:
+          Cookie: "{{ ccdc_score_login.cookies_string }}"
+        body_format: json
+        body:
+          started: true
+        status_code: [200]
