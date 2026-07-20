@@ -32,7 +32,9 @@ for role in \
     ccdc_data \
     ccdc_sso \
     ccdc_wikijs \
-    ccdc_proxy_gpo ; do
+    ccdc_proxy_gpo \
+    ccdc_win_openssh \
+    ccdc_scoring ; do
   echo "    - $role"
   ludus ansible role add -d "${ROLES_DIR}/${role}" $USER_ARG --force
 done
