@@ -127,13 +127,13 @@ you running the `ludus` CLI by hand. Scope the server to this project (`claude m
 project ...`) if you want it checked into `.mcp.json` for teammates, or keep it user-scoped if the
 API key is personal.
 
-## Ludus skills (required alongside the MCP server)
+## Ludus skills (optional per Ludus, treat as mandatory for this repo)
 
-The MCP server above gives Claude *execution* (it can call the Ludus API), but not Ludus-specific
-*knowledge* — how this range's CLI flags work, how to read `ccdc-range.yml`, or how to recognize
-a known failure like the ADWS timing issue in `docs/VALIDATION.md`. Install the companion
-`ludus-skills` package too, so the MCP server has the context it needs to deploy this range
-correctly rather than guessing at raw API calls. Per the Ludus docs
+Ludus itself documents this package as optional — the MCP server works without it. For this repo,
+install it anyway and treat it as mandatory: the MCP server above gives Claude *execution* (it can
+call the Ludus API), but not Ludus-specific *knowledge* — how this range's CLI flags work, how to
+read `ccdc-range.yml`, or how to recognize a known failure like the ADWS timing issue in
+`docs/VALIDATION.md`. Skipping it means Claude is calling the Ludus API blind. Per the Ludus docs
 (https://docs.ludus.cloud/docs/using-ludus/mcp/):
 
 > The MCP server handles execution; skills provide context. They work independently or together.
