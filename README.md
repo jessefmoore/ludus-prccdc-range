@@ -6,7 +6,7 @@ Squid proxy, and a Wazuh SIEM — all domain-joined, documented, and reproducibl
 
 - **Range ID:** `CCDC` (rangeNumber **50** → all IPs `10.50.<vlan>.<octet>`)
 - **AD domain:** `prccdc.local` (DC + DNS @ `10.50.10.10`)
-- **10 VMs across 4 VLANs** behind a Ludus router/firewall
+- **11 VMs across 5 VLANs** behind a Ludus router/firewall
 
 ## Topology
 | VM | OS | IP | Services |
@@ -21,6 +21,7 @@ Squid proxy, and a Wazuh SIEM — all domain-joined, documented, and reproducibl
 | CCDC-data01 | Ubuntu22 | 10.50.30.20 | MinIO + MySQL |
 | CCDC-sso01 | Ubuntu22 | 10.50.30.30 | Keycloak + waitAPI + RideAPI |
 | CCDC-wazuh01 | Ubuntu22 | 10.50.40.10 | Wazuh SIEM |
+| CCDC-score01 | Ubuntu24 | 10.50.50.10 | Quotient scoring engine (scorebot, not domain-joined) |
 
 ## Repo layout
 ```
@@ -32,6 +33,7 @@ docs/
   NETWORK.md              # VLANs + firewall + hardening ruleset
   ACCESS-CONTROL.md       # team Proxmox console-only access
   AD-INTEGRATION.md       # domain join + service accounts + LDAP wiring
+  VALIDATION.md           # service validation status + known deploy gotchas
 scripts/
   install-roles.sh        # install all roles into Ludus
   deploy.sh               # push config + deploy
@@ -39,9 +41,10 @@ scripts/
   create-team-user.sh     # add a team + scoped Proxmox access
   set-desktop-proxy.ps1   # point the desktop at Squid
   snapshot.sh             # snapshot / rollback for competition resets
-roles/                    # 10 custom Ansible roles (see ROLE_CONVENTIONS.md)
+roles/                    # 13 custom Ansible roles (see ROLE_CONVENTIONS.md)
   ludus_squid, ccdc_ad_accounts, ccdc_pii, ccdc_linux_domain_join,
-  ccdc_wordpress, ccdc_magento, ccdc_devtools, ccdc_data, ccdc_sso, ccdc_wikijs
+  ccdc_wordpress, ccdc_magento, ccdc_devtools, ccdc_data, ccdc_sso, ccdc_wikijs,
+  ccdc_proxy_gpo, ccdc_win_openssh, ccdc_scoring
 ```
 
 ## Quick start (Ludus CLI v2)
@@ -101,7 +104,9 @@ Ludus ships an official MCP server so Claude Code can drive range/template/snaps
 directly instead of shelling out to the `ludus` CLI. Full docs:
 https://docs.ludus.cloud/docs/using-ludus/mcp/#claude-code
 
-**Prerequisites:** Node.js 20+, a Ludus server URL, and an API key (`ludus apikey`).
+**Prerequisites:** Node.js 20+, a Ludus server URL, and an API key — reuse an existing admin
+account's key (e.g. JM's, same as the quick start above), or mint a dedicated one if you'd rather
+scope this integration's blast radius separately.
 
 ```bash
 claude mcp add ludus -- npx -y @badsectorlabs/ludus-mcp \
