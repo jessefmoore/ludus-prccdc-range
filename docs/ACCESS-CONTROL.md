@@ -22,7 +22,8 @@ Proxmox login : prccdc-blue-team-1  (realm: pam)   password: PRccdc-Blue1-2026!
 Range assigned : CCDC   (rangeNumber 50)
 ```
 Created with `scripts/create-team-user.sh BLUE1 "PRCCDC Blue Team 1" CCDC`
-(API: `addUser` with `isAdmin=false`, then `assignRangeToUser BLUE1 CCDC`).
+(CLI: `ludus users add --name "PRCCDC Blue Team 1" --userid BLUE1`, then
+`ludus range assign BLUE1 CCDC`).
 
 ## Add more teams
 ```bash
@@ -35,8 +36,8 @@ them share one environment (console access for all).
 
 ## Retrieve / reset a team's Proxmox credentials
 ```bash
-ludus user creds get --user BLUE1        # show proxmox user/password
-# API: getCredentials (proxmox creds), getAPIKey (reset Ludus API key)
+ludus users creds get -u BLUE1           # show proxmox user/password
+ludus users apikey -u BLUE1              # reset Ludus API key
 ```
 
 ## Verify

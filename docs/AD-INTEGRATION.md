@@ -51,6 +51,6 @@ Attrs    : sAMAccountName / displayName / mail / memberOf
 Within a single deploy, AD account creation and the LDAP-consuming roles may run close together.
 If an app's AD login isn't working right after the first deploy, re-run:
 ```bash
-ludus range deploy --user JM --only-roles ccdc_ad_accounts
-ludus range deploy --user JM --only-roles ccdc_wikijs,ccdc_devtools,ccdc_wordpress
+ludus range deploy -r CCDC -u JM --only-roles ccdc_ad_accounts
+ludus range deploy -r CCDC -u JM --only-roles ccdc_wikijs,ccdc_devtools,ccdc_wordpress
 ```

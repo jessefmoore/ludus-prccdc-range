@@ -44,13 +44,38 @@ roles/                    # 10 custom Ansible roles (see ROLE_CONVENTIONS.md)
   ccdc_wordpress, ccdc_magento, ccdc_devtools, ccdc_data, ccdc_sso, ccdc_wikijs
 ```
 
-## Rebuild from scratch
+## Quick start (Ludus CLI v2)
+
+This repo targets the [Ludus v2 CLI](https://docs.ludus.cloud/docs/using-ludus/cli). Range-scoped
+commands now take a global `-r/--range` flag (a user can own several ranges), and admins act on
+another user's behalf with `-u/--user` instead of the old `--user` long flag.
+
 ```bash
-scripts/install-roles.sh                 # roles into Ludus
-# create range CCDC (rangeNumber 50) if it doesn't exist, then:
-scripts/deploy.sh CCDC                    # push config + deploy (1-3 h)
+# 0. Point the CLI at your Ludus server (once)
+ludus apikey                                    # or: export LUDUS_URL=... LUDUS_API_KEY=...
+
+# 1. Create the range (pins the IP scheme: rangeNumber 50 -> 10.50.<vlan>.<octet>)
+ludus range create -n CCDC -r CCDC --range-number 50
+
+# 2. Install every custom/community role this range needs
+scripts/install-roles.sh
+
+# 3. Push the config and deploy (equivalent to, and wrapped by, scripts/deploy.sh):
+ludus range config set -f ccdc-range.yml -r CCDC
+ludus range deploy -r CCDC                      # 1-3 h for all VMs + AD
+#   or just:
+scripts/deploy.sh CCDC
+
+# 4. Watch progress / check status
+ludus range logs -f -r CCDC
+ludus range list -r CCDC
+
+# 5. Add a competition team with console-only Proxmox access
 scripts/create-team-user.sh BLUE1 "PRCCDC Blue Team 1" CCDC
 ```
+
+> Deploying on behalf of another Ludus user (admin only)? Add `-u <userid>` to `range config set`,
+> `range deploy`, `range logs`, and `range list` — see `scripts/deploy.sh CCDC <teamid>`.
 
 ## Template substitutions (and how to get the real OSes)
 The requested Alpine / Windows 10 / Debian 13 / Rocky templates were **not pre-built** on this
@@ -65,3 +90,30 @@ Keycloak, and Wiki.js. Wazuh uses the community `aleemladha` roles. See `docs/` 
 
 Some apps have a documented **one-time manual finalize** (WordPress install wizard, Wiki.js admin
 first-run + LDAP enable, Artifactory first login) — called out in each role's `README.md`.
+
+## Using the Ludus MCP server with Claude Code
+
+Ludus ships an official MCP server so Claude Code can drive range/template/snapshot operations
+directly instead of shelling out to the `ludus` CLI. Full docs:
+https://docs.ludus.cloud/docs/using-ludus/mcp/#claude-code
+
+**Prerequisites:** Node.js 20+, a Ludus server URL, and an API key (`ludus apikey`).
+
+```bash
+claude mcp add ludus -- npx -y @badsectorlabs/ludus-mcp \
+  --url https://<LUDUS_HOST>:8080 --api-key <YOUR_API_KEY>
+```
+
+Or configure it via environment variables instead of flags:
+
+```bash
+export LUDUS_URL=https://<LUDUS_HOST>:8080
+export LUDUS_API_KEY=<YOUR_API_KEY>
+claude mcp add ludus -- npx -y @badsectorlabs/ludus-mcp
+```
+
+Once added, `claude mcp list` should show `ludus` as connected, and Claude Code can call Ludus
+operations (range create/deploy/status, templates, snapshots, blueprints) for this repo without
+you running the `ludus` CLI by hand. Scope the server to this project (`claude mcp add --scope
+project ...`) if you want it checked into `.mcp.json` for teammates, or keep it user-scoped if the
+API key is personal.

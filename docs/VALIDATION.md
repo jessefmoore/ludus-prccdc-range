@@ -1,6 +1,6 @@
 # CCDC Range — Service Validation Status
 
-Validated over the range WireGuard VPN (`ludus user wireguard --user JM`). Range state: **SUCCESS**.
+Validated over the range WireGuard VPN (`ludus users wireguard -u JM`). Range state: **SUCCESS**.
 
 ## Login / GUI page results
 | Service | URL | Result |
@@ -46,7 +46,7 @@ Gitea/WordPress/Keycloak/Wiki.js AD login all working).
 1. **Ludus AD/ADWS timing (platform, not our roles):** on first domain creation, Ludus's own
    `Configure default OUs` step can fail with *"Unable to find a default server with Active Directory
    Web Services running"* because ADWS hasn't finished starting after the DC's post-promo reboot.
-   It cascades (aborts the role phase for other hosts). **Remedy: run `ludus range deploy` again** —
+   It cascades (aborts the role phase for other hosts). **Remedy: run `ludus range deploy -r CCDC` again** —
    the second pass finds AD ready and everything converges. Documented in `scripts/deploy.sh`.
 2. **Wiki.js finalize-detection bug (our role, fixed):** Wiki.js creates the `users` table (empty)
    during first-boot migrations, before setup. The role had detected "already finalized" by the
@@ -84,6 +84,6 @@ redeploy dev01. The compose template renders either backend from that one variab
 
 ## How to re-validate
 ```bash
-ludus user wireguard --user JM > ccdc-wg.conf && sudo wg-quick up ./ccdc-wg.conf
+ludus users wireguard -u JM > ccdc-wg.conf && sudo wg-quick up ./ccdc-wg.conf
 # then curl each URL above; the range subnet is 10.50.0.0/16
 ```

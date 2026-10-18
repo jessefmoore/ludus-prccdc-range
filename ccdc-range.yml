@@ -6,9 +6,9 @@
 # AD Domain:     prccdc.local  (NetBIOS PRCCDC)
 # Domain Ctrlr:  CCDC-dc01 @ 10.50.10.10  (also the DNS server for every VM)
 #
-# Deploy (as admin, targeting the team user's range):
-#   putConfig  file=ccdc-range.yml  rangeID=CCDC  userID=<team-user>
-#   deployRange rangeID=CCDC userID=<team-user> tags=all
+# Deploy (Ludus v2 CLI, as admin targeting the team user's range):
+#   ludus range config set -f ccdc-range.yml -r CCDC -u <team-user>
+#   ludus range deploy -r CCDC -u <team-user>
 #
 # Template substitutions (see docs/VMS.md — real OSes buildable via scripts/build-templates.sh):
 #   Alpine router/firewall -> Ludus native Debian router + firewall rules

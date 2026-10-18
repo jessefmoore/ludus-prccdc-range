@@ -51,15 +51,14 @@ Full per-VM detail is in [VMS.md](VMS.md); all passwords are in [CREDENTIALS.md]
 **Option A — WireGuard VPN into the range (recommended):**
 ```bash
 # generate your VPN profile, then import it into WireGuard
-ludus user wireguard --user JM > ccdc-wg.conf      # admin: whole-range access
+ludus users wireguard -u JM > ccdc-wg.conf         # admin: whole-range access
 wg-quick up ./ccdc-wg.conf
 # now browse to any 10.50.x.x URL above
 ```
-(API equivalent: `getWireguardConfig`.)
 
 **Option B — from inside the range:** open the `desk01` console/RDP in Proxmox and browse from there.
 
-**Option C — RDP bundle:** `ludus range rdp` downloads ready-made `.rdp` files for the Windows VMs.
+**Option C — RDP bundle:** `ludus range rdp -r CCDC` downloads ready-made `.rdp` files for the Windows VMs.
 
 > Tip: add these to the range DNS or your hosts file for friendlier names, e.g.
 > `10.50.10.30 wiki.prccdc.local`, `10.50.30.10 gitea.prccdc.local`, `10.50.20.10 www.prccdc.local`.

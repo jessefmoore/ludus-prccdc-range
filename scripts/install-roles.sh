@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 # =============================================================================
 # install-roles.sh — install every role the CCDC range needs into Ludus.
-# Run on a machine with the `ludus` CLI configured for the deploying user.
+# Run on a machine with the `ludus` CLI configured for the deploying user
+# (Ludus v2 CLI — https://docs.ludus.cloud/docs/using-ludus/cli).
 # Idempotent: re-running just re-adds/updates the roles.
 #
 # Usage:  ./install-roles.sh [--user TEAMID]
-#   --user TEAMID   install into another user's scope (admin only)
+#   --user TEAMID   install into another user's scope (admin only, -u/--user)
 # =============================================================================
 set -euo pipefail
 cd "$(dirname "$0")/.."          # repo root
 ROLES_DIR="roles"
 USER_ARG=""
-[[ "${1:-}" == "--user" ]] && USER_ARG="--user ${2:?user id required}"
+[[ "${1:-}" == "--user" ]] && USER_ARG="-u ${2:?user id required}"
 
 echo "==> Installing community roles from Ansible Galaxy"
 # Wazuh SIEM (manager + agents)

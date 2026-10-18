@@ -40,5 +40,5 @@ Wiki.js / WordPress / Gitea. Full list: `Get-ADUser -SearchBase "OU=Employees,OU
 | Admin (build) | Ludus user `JM` | (existing) | full |
 | Blue Team 1 | Proxmox `prccdc-blue-team-1` (realm pam) | `PRccdc-Blue1-2026!` | CCDC pool console only |
 
-Blue Team API key issued at creation (store securely; reset via `getAPIKey`).
+Blue Team API key issued at creation (store securely; reset via `ludus users apikey`).
 Proxmox GUI: `https://<proxmox-host>:8006`.
