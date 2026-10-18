@@ -53,6 +53,8 @@ another user's behalf with `-u/--user` instead of the old `--user` long flag.
 ```bash
 # 0. Point the CLI at your Ludus server and store your API key (once)
 export LUDUS_URL=https://<LUDUS_HOST>:8080      # or set `url:` in ~/.config/ludus/config.yml
+# You don't need a brand-new user for this — reuse your existing admin
+# account (e.g. JM) and store ITS key below, rather than creating one:
 ludus apikey                                    # store the key your Ludus admin gave you
 
 # 1. Create the range (pins the IP scheme: rangeNumber 50 -> 10.50.<vlan>.<octet>)
