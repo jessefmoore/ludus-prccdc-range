@@ -117,3 +117,31 @@ operations (range create/deploy/status, templates, snapshots, blueprints) for th
 you running the `ludus` CLI by hand. Scope the server to this project (`claude mcp add --scope
 project ...`) if you want it checked into `.mcp.json` for teammates, or keep it user-scoped if the
 API key is personal.
+
+## Ludus skills (optional, context-only)
+
+Ludus also ships a separate `ludus-skills` package: markdown reference knowledge (CLI commands,
+range-config YAML authoring, troubleshooting, Ansible role patterns, pre-built environment guides)
+that Claude Code can read without any MCP server or Ludus credentials. Per the Ludus docs
+(https://docs.ludus.cloud/docs/using-ludus/mcp/):
+
+> The MCP server handles execution; skills provide context. They work independently or together.
+
+Install it **project-scoped**, from the repo root, so it's committed and every future contributor
+who clones this repo gets Ludus-aware Claude Code help automatically:
+
+```bash
+npx skills add https://gitlab.com/badsectorlabs/ludus-skills
+```
+
+Confirm it landed under this repo's `.claude/skills/` (check with `git status`), then commit it
+like any other repo file:
+
+```bash
+git add .claude/skills
+git commit -m "Add ludus-skills package for Claude Code"
+```
+
+This is optional and complements, not replaces, the MCP server above — skills give Claude
+knowledge about Ludus (e.g. how to write a `role_vars` block or diagnose an ADWS timing failure
+like the one in `docs/VALIDATION.md`); the MCP server lets Claude actually run range operations.
