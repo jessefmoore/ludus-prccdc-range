@@ -127,6 +127,18 @@ you running the `ludus` CLI by hand. Scope the server to this project (`claude m
 project ...`) if you want it checked into `.mcp.json` for teammates, or keep it user-scoped if the
 API key is personal.
 
+### Example prompt — deploy this range
+
+With the MCP server connected, paste this into Claude Code from the repo root to run the same
+steps as the quick start above, but through the MCP server instead of the `ludus` CLI directly:
+
+> Using the Ludus MCP server, deploy the `CCDC` range for this repo. Create range `CCDC` with
+> range-number `50` if it doesn't already exist, install the custom/community roles under
+> `roles/` (see `scripts/install-roles.sh` for the exact list), push `ccdc-range.yml` as the
+> range config, then deploy it. If the first deploy pass errors on the DC with an Active
+> Directory Web Services timing issue, that's a known transient (see `docs/VALIDATION.md`) —
+> redeploy once more. Report range status and any failed roles when done.
+
 ## Ludus skills (optional, context-only)
 
 Ludus also ships a separate `ludus-skills` package: markdown reference knowledge (CLI commands,
