@@ -1,7 +1,7 @@
 # Reusable Prompt — Build a CCDC Range in Ludus
 
 A fill-in-the-blanks prompt for spinning up a new Collegiate Cyber Defense
-Competition (CCDC) range in Ludus. Distilled from the `prccdc-ludus-lab` build.
+Competition (CCDC) range in Ludus. Distilled from the `ludus-prccdc-range` build.
 Replace every `<...>` placeholder with your specifics (OS, web apps, topology),
 then paste it as your opening prompt.
 
