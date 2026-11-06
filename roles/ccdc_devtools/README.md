@@ -5,8 +5,10 @@ Deploys a developer-tooling stack for a CCDC range on a single Debian Linux VM
 
 - **[Gitea](https://gitea.io/)** — a lightweight self-hosted Git server
   (SQLite backend, no external DB).
-- **[JFrog Artifactory OSS](https://jfrog.com/community/open-source/)** — a
-  binary/artifact repository.
+- An artifact repository — **[Sonatype Nexus 3](https://www.sonatype.com/products/sonatype-nexus-repository)**
+  by default, or **[JFrog Artifactory OSS](https://jfrog.com/community/open-source/)**
+  if you opt in. Both are selected by the single `ccdc_devtools_artifact_backend`
+  variable; the templated compose file renders whichever one is chosen.
 
 Docker and the `docker compose` plugin are assumed to be **already installed**
 (the VM runs `geerlingguy.docker` before this role). This role does not install
@@ -15,8 +17,8 @@ Docker and does not use `community.docker`.
 ## What it does
 
 - Creates the stack directory `/opt/ccdc/devtools` (mode `0755`).
-- Templates `docker-compose.yml` (Gitea + Artifactory, `restart: unless-stopped`,
-  named volumes for persistence).
+- Templates `docker-compose.yml` (Gitea + the selected artifact backend,
+  `restart: unless-stopped`, named volumes for persistence).
 - Runs `docker compose up -d` in that directory (idempotent).
 - Waits for Gitea, then bootstraps an initial **admin** user via
   `gitea admin user create` (idempotent — checks `gitea admin user list` first).
@@ -24,6 +26,8 @@ Docker and does not use `community.docker`.
   `gitea admin auth add-ldap`, so AD users in `prccdc.local` can log into Gitea
   with their domain credentials (idempotent — checks `gitea admin auth list`
   first and only adds when the source is absent).
+- When running the Nexus backend (the default), waits for and reports Nexus's
+  randomly-generated first-boot admin password.
 
 ## Ports
 
@@ -31,8 +35,8 @@ Docker and does not use `community.docker`.
 |-----------|-----------|------------------------------------------|
 | `3000`    | `3000`    | Gitea web UI (`ccdc_devtools_gitea_port`) |
 | `2222`    | `22`      | Gitea SSH (`ccdc_devtools_gitea_ssh_port`)|
-| `8082`    | `8082`    | Artifactory UI/API (`ccdc_devtools_artifactory_port`) |
-| `8081`    | `8081`    | Artifactory service (`ccdc_devtools_artifactory_router_port`) |
+| `8082`    | `8081` (Nexus) / `8082` (Artifactory) | Artifact repo UI/API (`ccdc_devtools_artifactory_port`) |
+| `8081`    | `8081`    | Artifactory legacy service port (`ccdc_devtools_artifactory_router_port`, Artifactory backend only) |
 
 ## Variables (`defaults/main.yml`)
 
@@ -52,9 +56,11 @@ Docker and does not use `community.docker`.
 | `ccdc_devtools_ldap_bind_password`          | `PRccdc-Svc-2026!`                                   | Bind password (**override!**).               |
 | `ccdc_devtools_ldap_base_dn`                | `dc=prccdc,dc=local`                                 | User search base DN.                         |
 | `ccdc_devtools_ldap_source_name`            | `PRCCDC-AD`                                          | Gitea auth source name (idempotency key).    |
-| `ccdc_devtools_artifactory_port`            | `8082`                                               | Host port -> Artifactory UI/API.             |
-| `ccdc_devtools_artifactory_router_port`     | `8081`                                               | Host port -> Artifactory service.            |
+| `ccdc_devtools_artifact_backend`            | `nexus`                                              | `nexus` (default, light) or `artifactory` (heavy, needs 12 GB dev01). |
+| `ccdc_devtools_artifactory_port`            | `8082`                                               | Host port -> artifact repo UI/API (either backend). |
+| `ccdc_devtools_artifactory_router_port`     | `8081`                                               | Host port -> Artifactory's legacy service port (Artifactory only). |
 | `ccdc_devtools_artifactory_image`           | `releases-docker.jfrog.io/jfrog/artifactory-oss:latest` | Artifactory OSS image.                   |
+| `ccdc_devtools_nexus_image`                 | `sonatype/nexus3:latest`                             | Nexus image.                                 |
 
 ## Accessing the services
 
@@ -89,11 +95,23 @@ You should see a row named `PRCCDC-AD` of type `LDAP (via BindDN)`. If AD logins
 fail, confirm the DC is reachable on `389`, the `svc_ldap` bind DN/password are
 correct, and the user actually exists under `dc=prccdc,dc=local`.
 
-- **Artifactory:** `http://<dev01-ip>:8082/ui`
-  Default first-boot credentials are `admin` / `password` (you are prompted to
-  change the password on first login).
-  **Note:** Artifactory OSS needs several GB of RAM and takes **1-2 minutes** to
-  finish initialising on first boot before the UI responds — be patient.
+- **Nexus (default backend):** `http://<dev01-ip>:8082/`
+  User `admin`; the first-boot password is auto-generated inside the container
+  and reported by the role (it also waits for the password file to appear).
+  Retrieve it manually any time with:
+
+  ```bash
+  docker exec ccdc_nexus cat /nexus-data/admin.password
+  ```
+
+  Nexus forces a password change on first login.
+
+- **Artifactory (if `ccdc_devtools_artifact_backend: artifactory`):**
+  `http://<dev01-ip>:8082/ui`. Default first-boot credentials are `admin` /
+  `password` (you are prompted to change the password on first login).
+  **Note:** Artifactory OSS needs several GB of RAM (the role docs recommend
+  bumping dev01 to 12 GB) and takes **1-2 minutes** to finish initialising on
+  first boot before the UI responds — be patient.
 
 ## Verify
 
@@ -103,22 +121,19 @@ On the VM:
 cd /opt/ccdc/devtools && docker compose ps
 ```
 
-Both `ccdc_gitea` and `ccdc_artifactory` should be `Up`. Then:
+`ccdc_gitea` plus either `ccdc_nexus` (default) or `ccdc_artifactory` should be
+`Up`. Then:
 
 ```bash
 curl -I http://localhost:3000              # Gitea -> HTTP 200/303
-curl -I http://localhost:8082/ui/          # Artifactory -> HTTP 200 (after first-boot warm-up)
+curl -I http://localhost:8082/             # Nexus/Artifactory -> HTTP 200 (after first-boot warm-up)
 ```
 
-## Lighter alternative: Sonatype Nexus 3
+## Switching to JFrog Artifactory
 
-Artifactory OSS is memory-hungry. If the range VM is RAM-constrained, the
-templated `docker-compose.yml` includes a **commented-out** `nexus`
-(`sonatype/nexus3:latest`) service block. Comment out `artifactory`, uncomment
-`nexus` and its `nexus_data` volume, then `docker compose up -d`. Nexus serves
-its UI/repos on port `8081`; its generated admin password lives at
-`/nexus-data/admin.password`:
-
-```bash
-docker exec ccdc_nexus cat /nexus-data/admin.password
-```
+Nexus is the default because Artifactory OSS's ~6 JVM microservices are heavy
+and, in validation, didn't reliably stay up sharing RAM with Gitea on an 8 GB
+VM. To switch back to Artifactory: set `ccdc_devtools_artifact_backend:
+artifactory` in `ccdc-range.yml` (role_vars for dev01), raise dev01 to
+`ram_gb: 12, ram_min_gb: 12`, and redeploy. The compose template renders
+whichever backend the variable selects — no manual compose editing needed.

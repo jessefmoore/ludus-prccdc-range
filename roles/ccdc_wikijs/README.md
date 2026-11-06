@@ -25,6 +25,10 @@ Docker and does **not** use the `community.docker` collection.
   - `ldap-strategy.sql` — the rendered best-effort DB seed (see below).
 - Brings the stack up with `docker compose up -d` (idempotent: guarded by a
   compose-changed / not-running check).
+- **Automatically provisions the local admin account** by calling Wiki.js's
+  first-run `POST /finalize` setup endpoint once the stack is up (idempotent —
+  detected by admin row count, so a completed finalize is never repeated; see
+  "First run" below).
 - **Best-effort, non-fatal** attempt to seed the LDAP auth strategy directly
   into the database (see “Active Directory login” below).
 
@@ -37,20 +41,26 @@ Docker and does **not** use the `community.docker` collection.
 
 URL: **`http://<wiki01-ip>:8083/`**
 
-## First run — create the local admin
+## First run — the local admin is created automatically
 
 Wiki.js 2.x (stable image) does **not** create the admin account from
-environment variables — there is no working `WIKI_ADMIN_EMAIL` in this image.
-The admin is created in the browser by the one-time **Administrator Setup**
-wizard:
+environment variables — there is no working `WIKI_ADMIN_EMAIL` in this image,
+and it would otherwise require the one-time browser **Administrator Setup**
+wizard. This role automates that wizard instead: once Wiki.js is reachable, it
+counts existing users (0 means not yet finalized) and, if so, `POST`s to
+`/finalize` with:
 
-1. Browse to `http://<wiki01-ip>:8083/`.
-2. On the setup screen, enter:
-   - **Administrator Email** — `admin@prccdc.local` (`ccdc_wikijs_admin_email`)
-   - **Password** — `PRccdc-Wiki-2026!` (`ccdc_wikijs_admin_password`)
-   - **Site URL** — `http://<wiki01-ip>:8083`
-3. Finish the wizard. This is what actually creates the Wiki.js database schema
-   (including the `authentication` table).
+- **Administrator Email** — `admin@prccdc.local` (`ccdc_wikijs_admin_email`)
+- **Password** — `PRccdc-Wiki-2026!` (`ccdc_wikijs_admin_password`)
+- **Site URL** — derived from `ccdc_wikijs_host`/`ccdc_wikijs_site_url`, or the
+  VM's primary IP + `ccdc_wikijs_port` if left blank
+
+This is what actually creates the Wiki.js database schema (including the
+`authentication` table), the same as completing the wizard by hand. The task
+is idempotent — admin row count, not table presence, is the finalized check
+(the `users` table exists empty before setup, so table presence alone would
+false-positive on a fresh deploy) — and never re-runs once an admin exists. No
+manual browser step is needed; log in directly with the credentials above.
 
 ## Active Directory (LDAP) login
 

@@ -20,10 +20,15 @@ Docker and does **not** use the `community.docker` collection.
   `rideapi/` subdirectories.
 - Templates `docker-compose.yml`, the two JSON payloads, and a small nginx
   `default.conf` (returns the JSON as `application/json`, plus a `/healthz`).
-- Copies `keycloak-realm-import.json` (optional AD/LDAP federation reference)
-  into the stack dir.
+- Copies `keycloak-realm-import.json` (a reference-only realm doc, not
+  applied) into the stack dir.
 - Runs `docker compose up -d` from the stack dir (idempotent; re-running only
   reports "changed" when a container is actually created/recreated/started).
+- When `ccdc_sso_ad_ldap_enabled` is true (the default), automatically wires
+  Keycloak to the `prccdc.local` AD domain: creates the `ccdc` realm, adds an
+  `ad-ldap` user-federation provider via `kcadm` (`kc-federate.sh`, idempotent),
+  and triggers a user sync — see "Active Directory / LDAP user federation"
+  below.
 
 ## Ports
 
@@ -62,6 +67,13 @@ All variables are namespaced `ccdc_sso_` (Ludus shares role_vars across roles).
 | `ccdc_sso_keycloak_port`            | `8080`                     | Host port for the Keycloak console.          |
 | `ccdc_sso_waitapi_port`             | `8081`                     | Host port for waitAPI.                       |
 | `ccdc_sso_rideapi_port`             | `8082`                     | Host port for RideAPI.                       |
+| `ccdc_sso_ad_ldap_enabled`          | `true`                     | Auto-wire Keycloak to AD via `kc-federate.sh`. |
+| `ccdc_sso_realm`                    | `ccdc`                     | Realm created for the AD-federated apps.     |
+| `ccdc_sso_ldap_host`                | `10.50.10.10`              | AD DC / DNS server IP.                       |
+| `ccdc_sso_ldap_port`                | `389`                      | LDAP port (389 = plaintext).                 |
+| `ccdc_sso_ldap_users_dn`            | `dc=prccdc,dc=local`       | LDAP users DN searched by the federation provider. |
+| `ccdc_sso_ldap_bind_dn`             | `cn=svc_ldap,ou=ServiceAccounts,ou=CCDC,dc=prccdc,dc=local` | Bind DN (svc_ldap service account). |
+| `ccdc_sso_ldap_bind_password`       | `PRccdc-Svc-2026!`         | Bind password (**override!**).               |
 
 ## Verify
 
@@ -83,37 +95,39 @@ cd /opt/ccdc/sso && docker compose ps
 Keycloak takes ~20-40s after `up -d` to finish its first-boot DB migration
 before the console answers.
 
-## Optional: AD / LDAP user federation
+## Active Directory / LDAP user federation (automatic by default)
 
-`files/keycloak-realm-import.json` is a **reference** realm document that adds
-an LDAP user-federation provider pointing at the AD domain. It is copied to
-`/opt/ccdc/sso/keycloak-realm-import.json` but is **not** applied automatically
-and is not required to succeed at deploy.
+When `ccdc_sso_ad_ldap_enabled` is `true` (the default), the role wires
+Keycloak to the `prccdc.local` AD domain with no manual steps:
+
+1. Renders `keycloak-ad-ldap.json` — the `ad-ldap` federation component
+   definition (vendor `Active Directory`, bind DN `svc_ldap`, `READ_ONLY` edit
+   mode, username attribute `sAMAccountName`, UUID attribute `objectGUID`).
+2. Renders and runs `kc-federate.sh`, which uses `kcadm` to idempotently
+   create the `{{ ccdc_sso_realm }}` realm (default `ccdc`), add the `ad-ldap`
+   provider if it's not already present, and trigger a full user sync.
+3. This step is **non-fatal** (`failed_when: false`): on a from-scratch
+   deploy, Keycloak or AD may still be warming up, so a failure here doesn't
+   abort the play — a re-run or the next deploy completes it.
+
+AD users (e.g. `athompson`) can then authenticate against the `ccdc` realm —
+log into the admin console's realm user list to confirm the sync, or request
+an OIDC token via the realm's token endpoint
+(`/realms/{{ ccdc_sso_realm }}/protocol/openid-connect/token`) with a
+password grant.
 
 Domain context (see `roles/ROLE_CONVENTIONS.md`):
 
 - Domain: `prccdc.local` (NetBIOS `PRCCDC`), base DN `dc=prccdc,dc=local`.
-- Users container: `cn=Users,dc=prccdc,dc=local`.
-- Bind account: `svc_ldap` (created by the `ccdc_ad_accounts` role; supply its
-  password out-of-band).
+- Bind account: `svc_ldap` (created by the `ccdc_ad_accounts` role).
 
-To wire it up, either:
+### Disabling automatic federation / doing it by hand
 
-1. **Admin console:** log in, create/select a realm, go to *User federation*
-   > *Add provider* > *LDAP*, and enter:
-   - Vendor: `Active Directory`
-   - Connection URL: `ldap://dc01.prccdc.local:389` (or `ldaps://...:636`)
-   - Users DN: `cn=Users,dc=prccdc,dc=local`
-   - Bind type: `simple`, Bind DN: `cn=svc_ldap,cn=Users,dc=prccdc,dc=local`,
-     Bind credential: `<svc_ldap password>`
-   - Username LDAP attribute: `sAMAccountName`, UUID attribute: `objectGUID`
-   - Edit mode: `READ_ONLY` (safe for a lab), then *Test connection* /
-     *Test authentication* and *Save* > *Sync all users*.
-
-2. **Import the reference file:** open the JSON, replace `BIND_PASSWORD_HERE`
-   and adjust the `connectionUrl`/DNs, then use *Realm settings > Partial
-   import*, or restart Keycloak with `--import-realm` and the file staged in
-   `/opt/keycloak/data/import`.
-
-`READ_ONLY` edit mode prevents Keycloak from writing back to AD. Prefer LDAPS
-(636) with a trusted certificate for anything beyond a throwaway lab.
+Set `ccdc_sso_ad_ldap_enabled: false` to skip the automated steps entirely.
+`files/keycloak-realm-import.json` is also copied to
+`/opt/ccdc/sso/keycloak-realm-import.json` as a plain reference realm doc (not
+applied) if you'd rather configure federation manually through the admin
+console (*User federation* > *Add provider* > *LDAP*) or via *Realm settings >
+Partial import*. Prefer LDAPS (636) with a trusted certificate for anything
+beyond a throwaway lab — the automated path uses plaintext LDAP (389) by
+default via `ccdc_sso_ldap_port`.
