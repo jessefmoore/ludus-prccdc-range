@@ -17,7 +17,7 @@ Squid proxy, and a Wazuh SIEM — all domain-joined, documented, and reproducibl
 | CCDC-proxy01 | Debian12 | 10.50.10.40 | Squid proxy |
 | CCDC-web01 | Win2022 | 10.50.20.10 | WordPress / media (AD login) |
 | CCDC-shop01 | Ubuntu22 *(⇐Rocky)* | 10.50.20.20 | Magento |
-| CCDC-dev01 | Debian12 *(⇐Deb13)* | 10.50.30.10 | Gitea + JFrog (Gitea AD login) |
+| CCDC-dev01 | Debian12 *(⇐Deb13)* | 10.50.30.10 | Gitea + Nexus (Gitea AD login) |
 | CCDC-data01 | Ubuntu22 | 10.50.30.20 | MinIO + MySQL |
 | CCDC-sso01 | Ubuntu22 | 10.50.30.30 | Keycloak + waitAPI + RideAPI |
 | CCDC-wazuh01 | Ubuntu22 | 10.50.40.10 | Wazuh SIEM |
@@ -92,11 +92,11 @@ Debian **router is the firewall** (Alpine's role). Build the exact OSes with
 
 ## Notes on service delivery
 Linux app services run as Docker Compose stacks (via `geerlingguy.docker`) authored as custom Ludus
-roles — the most reliable way to stand up WordPress-adjacent, Magento, Gitea/JFrog, MinIO/MySQL,
+roles — the most reliable way to stand up WordPress-adjacent, Magento, Gitea/Nexus, MinIO/MySQL,
 Keycloak, and Wiki.js. Wazuh uses the community `aleemladha` roles. See `docs/` for everything.
 
 Some apps have a documented **one-time manual finalize** (WordPress install wizard, Wiki.js admin
-first-run + LDAP enable, Artifactory first login) — called out in each role's `README.md`.
+first-run + LDAP enable, Nexus admin-password first login) — called out in each role's `README.md`.
 
 ## Using the Ludus MCP server with Claude Code
 

@@ -10,6 +10,7 @@ Alpine router/firewall) is the gateway/firewall for every VLAN and does NAT to t
 | 20 | DMZ | 10.50.20.0/24 | web01 .10, shop01 .20 |
 | 30 | Internal svc | 10.50.30.0/24 | dev01 .10, data01 .20, sso01 .30 |
 | 40 | Security | 10.50.40.0/24 | wazuh01 .10 |
+| 50 | Scoring | 10.50.50.0/24 | score01 .10 |
 
 ## Current policy (build/lab)
 ```yaml

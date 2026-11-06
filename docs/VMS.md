@@ -14,7 +14,7 @@ AD domain **prccdc.local** (NetBIOS `PRCCDC`). DNS server for all VMs = the DC (
 | CCDC-proxy01| Debian 12 | 10.50.10.40 | Squid forward proxy |
 | CCDC-web01  | Win Server 2022 | 10.50.20.10 | WordPress / media web (AD login) |
 | CCDC-shop01 | Ubuntu 22.04 *(⇐Rocky)* | 10.50.20.20 | Magento e-commerce |
-| CCDC-dev01  | Debian 12 *(⇐Deb13)* | 10.50.30.10 | Gitea + JFrog Artifactory (Gitea AD login) |
+| CCDC-dev01  | Debian 12 *(⇐Deb13)* | 10.50.30.10 | Gitea + Nexus artifact repo (Gitea AD login) |
 | CCDC-data01 | Ubuntu 22.04 | 10.50.30.20 | MinIO + MySQL |
 | CCDC-sso01  | Ubuntu 22.04 | 10.50.30.30 | Keycloak + waitAPI + RideAPI |
 | CCDC-wazuh01| Ubuntu 22.04 | 10.50.40.10 | Wazuh SIEM manager |

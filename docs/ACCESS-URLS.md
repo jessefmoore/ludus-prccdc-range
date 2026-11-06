@@ -31,7 +31,7 @@ Full per-VM detail is in [VMS.md](VMS.md); all passwords are in [CREDENTIALS.md]
 ## Data services (not web)
 | Service | Endpoint | Login |
 |---------|----------|-------|
-| MySQL (data01) | `10.50.30.20:3306` | `appuser` / `PRccdc-App-2026!` (root `PRccdc-Mysql-2026!`) |
+| MySQL (data01) | `10.50.30.20:3306` | `appuser` / `PRccdc-MySQL-2026!` (root `PRccdc-MySQL-Root-2026!`) |
 | WordPress DB | `10.50.20.10:3306` | `wp_user` / `PRccdc-WP-2026!` |
 | Gitea SSH | `10.50.30.10:2222` | git over SSH |
 | Squid proxy | `10.50.10.40:3128` | forward proxy for the desktop |
